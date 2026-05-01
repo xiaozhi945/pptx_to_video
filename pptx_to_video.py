@@ -20,7 +20,7 @@ if sys.platform == "win32":
 # 添加项目路径，使模块可导入
 sys.path.insert(0, str(Path(__file__).parent))
 
-from config import INPUT_DIR, OUTPUT_DIR, TEMP_DIR, PROJECT_ROOT, ZHIPUAI_API_KEY, ANTHROPIC_API_KEY, LLM_PROVIDER
+from config import INPUT_DIR, OUTPUT_DIR, TEMP_DIR, PROJECT_ROOT, ZHIPUAI_API_KEY, ANTHROPIC_API_KEY, LLM_PROVIDER, TTS_VOICE
 from ppt_parser import PPTParser
 from script_generator import ScriptGenerator
 from tts_service import TTSService
