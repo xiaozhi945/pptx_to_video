@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m py_compile config.py ppt_parser.py script_generator.py tts_service.py video_creator.py pptx_to_video.py __main__.py)",
+      "Bash(python pptx_to_video.py --list)",
+      "Bash(python -m pptx_to_video --list)"
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+# 环境变量
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# 工作目录
+input/
+output/
+temp/
+
+# IDE
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
