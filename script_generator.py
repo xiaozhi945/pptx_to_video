@@ -6,10 +6,10 @@ from pathlib import Path
 from typing import Dict, Any, List
 
 try:
-    from .config import MODEL_NAME, MAX_TOKENS, LLM_PROVIDER
+    from .config import MODEL_NAME, MAX_TOKENS, LLM_PROVIDER, MAX_RETRIES, BASE_RETRY_DELAY, DEEPSEEK_BASE_URL, QIANWEN_BASE_URL
 except ImportError:
     sys.path.insert(0, str(Path(__file__).parent))
-    from config import MODEL_NAME, MAX_TOKENS, LLM_PROVIDER
+    from config import MODEL_NAME, MAX_TOKENS, LLM_PROVIDER, MAX_RETRIES, BASE_RETRY_DELAY, DEEPSEEK_BASE_URL, QIANWEN_BASE_URL
 
 
 class ScriptGenerator:
@@ -18,8 +18,8 @@ class ScriptGenerator:
     def __init__(self, api_key: str, prompts_dir: str, provider: str = None):
         self.provider = provider or LLM_PROVIDER
         self.prompts_dir = Path(prompts_dir)
-        self.max_retries = 3  # 最大重试次数
-        self.retry_delay = 2  # 重试间隔（秒）
+        self.max_retries = MAX_RETRIES  # 从配置读取
+        self.base_retry_delay = BASE_RETRY_DELAY  # 从配置读取
 
         # 初始化对应的客户端
         if self.provider == "claude":
@@ -28,6 +28,12 @@ class ScriptGenerator:
         elif self.provider == "zhipu":
             from zhipuai import ZhipuAI
             self.client = ZhipuAI(api_key=api_key)
+        elif self.provider == "deepseek":
+            from openai import OpenAI
+            self.client = OpenAI(api_key=api_key, base_url=DEEPSEEK_BASE_URL)
+        elif self.provider == "qianwen":
+            from openai import OpenAI
+            self.client = OpenAI(api_key=api_key, base_url=QIANWEN_BASE_URL)
         else:
             raise ValueError(f"不支持的 LLM 提供商: {self.provider}")
 
@@ -54,6 +60,20 @@ class ScriptGenerator:
             return response.content[0].text
 
         elif self.provider == "zhipu":
+            response = self.client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                max_tokens=max_tokens,
+            )
+            return response.choices[0].message.content
+
+        elif self.provider in ("deepseek", "qianwen"):
+            # DeepSeek 和通义千问使用 OpenAI 兼容接口
             response = self.client.chat.completions.create(
                 model=MODEL_NAME,
                 messages=[
@@ -98,9 +118,11 @@ class ScriptGenerator:
             except Exception as e:
                 last_error = e
                 if attempt < self.max_retries - 1:
+                    # 指数退避：2^attempt 秒
+                    delay = self.base_retry_delay * (2 ** attempt)
                     print(f"  ⚠ API 请求失败 (尝试 {attempt + 1}/{self.max_retries}): {str(e)}", flush=True)
-                    print(f"  → {self.retry_delay} 秒后重试...", flush=True)
-                    time.sleep(self.retry_delay)
+                    print(f"  → {delay} 秒后重试...", flush=True)
+                    time.sleep(delay)
                 else:
                     print(f"  ❌ API 请求失败，已重试 {self.max_retries} 次", flush=True)
 
@@ -149,9 +171,11 @@ class ScriptGenerator:
             except Exception as e:
                 last_error = e
                 if attempt < self.max_retries - 1:
+                    # 指数退避：2^attempt 秒
+                    delay = self.base_retry_delay * (2 ** attempt)
                     print(f"  ⚠ API 请求失败 (尝试 {attempt + 1}/{self.max_retries}): {str(e)}", flush=True)
-                    print(f"  → {self.retry_delay} 秒后重试...", flush=True)
-                    time.sleep(self.retry_delay)
+                    print(f"  → {delay} 秒后重试...", flush=True)
+                    time.sleep(delay)
                 else:
                     print(f"  ❌ API 请求失败，已重试 {self.max_retries} 次", flush=True)
 

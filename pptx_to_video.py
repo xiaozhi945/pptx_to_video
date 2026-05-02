@@ -20,22 +20,27 @@ if sys.platform == "win32":
 # 添加项目路径，使模块可导入
 sys.path.insert(0, str(Path(__file__).parent))
 
-from config import INPUT_DIR, OUTPUT_DIR, TEMP_DIR, PROJECT_ROOT, ZHIPUAI_API_KEY, ANTHROPIC_API_KEY, LLM_PROVIDER, TTS_VOICE
+# 检查并自动安装依赖
+from check_dependencies import check_and_install_dependencies, check_optional_dependencies
+
+if not check_and_install_dependencies():
+    print("\n程序需要安装依赖才能运行，请按照提示操作。")
+    sys.exit(1)
+
+# 检查可选依赖
+check_optional_dependencies()
+
+from config import INPUT_DIR, OUTPUT_DIR, TEMP_DIR, PROJECT_ROOT, ZHIPUAI_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, QIANWEN_API_KEY, LLM_PROVIDER, TTS_VOICE, ENABLE_CACHE
 from ppt_parser import PPTParser
 from script_generator import ScriptGenerator
 from tts_service import TTSService
 from video_creator import VideoCreator
+from ffmpeg_utils import check_ffmpeg
 
 
-def check_ffmpeg():
-    """检查 FFmpeg 是否已安装"""
-    ffmpeg = shutil.which("ffmpeg")
-    ffprobe = shutil.which("ffprobe")
-    if not ffmpeg or not ffprobe:
-        print("警告: FFmpeg 未安装或未在 PATH 中", flush=True)
-        print("请安装 FFmpeg: https://ffmpeg.org/download.html", flush=True)
-        return False
-    return True
+def check_ffmpeg_deprecated():
+    """已弃用：使用 ffmpeg_utils.check_ffmpeg() 代替"""
+    return check_ffmpeg()
 
 
 def main():
@@ -43,7 +48,7 @@ def main():
     parser.add_argument("--input", "-i", help=f"输入 PPTX 文件路径（默认: {INPUT_DIR}/*.pptx）")
     parser.add_argument("--output", "-o", help="输出视频路径")
     parser.add_argument("--api-key", "-k", help="LLM API Key（也可通过环境变量设置）")
-    parser.add_argument("--provider", "-p", choices=["claude", "zhipu"], help=f"LLM 提供商（默认: {LLM_PROVIDER}）")
+    parser.add_argument("--provider", "-p", choices=["claude", "zhipu", "deepseek", "qianwen"], help=f"LLM 提供商（默认: {LLM_PROVIDER}）")
     parser.add_argument("--skip-tts", action="store_true", help="跳过 TTS 步骤")
     parser.add_argument("--skip-video", action="store_true", help="跳过视频合成步骤")
     parser.add_argument("--list", "-l", action="store_true", help="列出 input 目录中的 PPTX 文件")
@@ -80,6 +85,18 @@ def main():
         if not api_key:
             print("错误: 请设置 ZHIPUAI_API_KEY 环境变量或使用 --api-key 参数", flush=True)
             print("export ZHIPUAI_API_KEY='your-api-key-here'", flush=True)
+            sys.exit(1)
+    elif provider == "deepseek":
+        api_key = args.api_key or DEEPSEEK_API_KEY
+        if not api_key:
+            print("错误: 请设置 DEEPSEEK_API_KEY 环境变量或使用 --api-key 参数", flush=True)
+            print("export DEEPSEEK_API_KEY='your-api-key-here'", flush=True)
+            sys.exit(1)
+    elif provider == "qianwen":
+        api_key = args.api_key or QIANWEN_API_KEY
+        if not api_key:
+            print("错误: 请设置 QIANWEN_API_KEY 环境变量或使用 --api-key 参数", flush=True)
+            print("export QIANWEN_API_KEY='your-api-key-here'", flush=True)
             sys.exit(1)
     else:
         print(f"错误: 不支持的 LLM 提供商: {provider}", flush=True)
@@ -126,9 +143,30 @@ def main():
         # 2. 生成讲解脚本
         print("[2/5] 生成讲解脚本...", flush=True)
         prompts_dir = Path(__file__).parent / "prompts"
-        generator = ScriptGenerator(api_key, prompts_dir, provider)
-        result = generator.generate(ppt_text_content, ppt_data)
-        scripts = result["scripts"]
+
+        # 检查是否已有脚本缓存
+        script_path = file_output_dir / "scripts.json"
+        if ENABLE_CACHE and script_path.exists():
+            print(f"  → 发现已有脚本缓存: {script_path}", flush=True)
+            print("  → 是否使用缓存？(y/n，默认 y): ", end="", flush=True)
+
+            # 自动使用缓存（非交互模式）
+            use_cache = True
+            if use_cache:
+                print("y", flush=True)
+                with open(script_path, "r", encoding="utf-8") as f:
+                    result = json.load(f)
+                scripts = result.get("scripts", [])
+                print(f"  ✓ 已加载缓存脚本，共 {len(scripts)} 条", flush=True)
+            else:
+                print("n", flush=True)
+                generator = ScriptGenerator(api_key, prompts_dir, provider)
+                result = generator.generate(ppt_text_content, ppt_data)
+                scripts = result["scripts"]
+        else:
+            generator = ScriptGenerator(api_key, prompts_dir, provider)
+            result = generator.generate(ppt_text_content, ppt_data)
+            scripts = result["scripts"]
 
         # 验证脚本数量与幻灯片数量匹配
         expected_count = ppt_data['total_slides']
@@ -165,14 +203,33 @@ def main():
         # 3. TTS 语音合成
         if not args.skip_tts:
             print("[3/5] 语音合成...", flush=True)
-            print(f"  使用语音: {TTS_VOICE}", flush=True)
-            tts_service = TTSService(file_temp_dir)
-            audio_results = tts_service.synthesize(scripts)
-            print(f"  已生成 {len(audio_results)} 个音频文件", flush=True)
 
-            # 验证音频生成结果
-            if len(audio_results) != len(scripts):
-                print(f"  ⚠ 警告: 音频数量({len(audio_results)})与脚本数量({len(scripts)})不匹配", flush=True)
+            # 检查是否已有音频缓存
+            audio_files = sorted(file_temp_dir.glob("slide_*.mp3"))
+            if ENABLE_CACHE and len(audio_files) == len(scripts):
+                print(f"  → 发现已有音频缓存: {len(audio_files)} 个文件", flush=True)
+                print("  → 是否使用缓存？(y/n，默认 y): ", end="", flush=True)
+
+                # 自动使用缓存（非交互模式）
+                use_cache = True
+                if use_cache:
+                    print("y", flush=True)
+                    print(f"  ✓ 已使用缓存音频，共 {len(audio_files)} 个", flush=True)
+                else:
+                    print("n", flush=True)
+                    print(f"  使用语音: {TTS_VOICE}", flush=True)
+                    tts_service = TTSService(file_temp_dir)
+                    audio_results = tts_service.synthesize(scripts)
+                    print(f"  已生成 {len(audio_results)} 个音频文件", flush=True)
+            else:
+                print(f"  使用语音: {TTS_VOICE}", flush=True)
+                tts_service = TTSService(file_temp_dir)
+                audio_results = tts_service.synthesize(scripts)
+                print(f"  已生成 {len(audio_results)} 个音频文件", flush=True)
+
+                # 验证音频生成结果
+                if len(audio_results) != len(scripts):
+                    print(f"  ⚠ 警告: 音频数量({len(audio_results)})与脚本数量({len(scripts)})不匹配", flush=True)
 
         # 4. 生成缩略图
         print("[4/5] 生成幻灯片缩略图...", flush=True)

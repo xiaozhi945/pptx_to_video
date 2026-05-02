@@ -9,6 +9,12 @@ from pptx.util import Inches, Pt
 from PIL import Image
 import io
 
+try:
+    from .config import (LIBREOFFICE_PATH, FONT_TITLE, FONT_BODY, POPPLER_PATH)
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).parent))
+    from config import (LIBREOFFICE_PATH, FONT_TITLE, FONT_BODY, POPPLER_PATH)
+
 
 class PPTParser:
     """PPTX 文档解析器"""
@@ -111,22 +117,11 @@ class PPTParser:
         import subprocess
         import shutil
 
-        # 检查 LibreOffice 是否安装
-        soffice = shutil.which("soffice")
-        if not soffice:
-            # Windows 常见路径
-            possible_paths = [
-                r"D:\Soft\LibreOffice\program\soffice.exe",
-                r"C:\Program Files\LibreOffice\program\soffice.exe",
-                r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
-            ]
-            for path in possible_paths:
-                if Path(path).exists():
-                    soffice = path
-                    break
-
-        if not soffice:
+        # 仅从 config.ini 读取 LibreOffice 路径
+        if not LIBREOFFICE_PATH or not Path(LIBREOFFICE_PATH).exists():
             return None
+
+        soffice = LIBREOFFICE_PATH
 
         try:
             # 创建临时输出目录
@@ -142,15 +137,34 @@ class PPTParser:
                 "--outdir", str(temp_output),
                 str(pptx_path.resolve())
             ]
-            subprocess.run(cmd, check=True, capture_output=True, timeout=60)
+
+            print(f"  → 正在使用 LibreOffice 转换 PDF...", flush=True)
+            result = subprocess.run(cmd, check=True, capture_output=True, timeout=60)
 
             if not pdf_path.exists():
+                print(f"  ✗ PDF 文件未生成: {pdf_path}", flush=True)
                 return None
+
+            print(f"  ✓ PDF 转换完成", flush=True)
 
             # 使用 pdf2image 转换 PDF 为图片
             try:
                 from pdf2image import convert_from_path
-                images = convert_from_path(str(pdf_path), dpi=150)
+
+                # 查找 Poppler 路径
+                poppler_path = self._find_poppler()
+
+                if not poppler_path:
+                    print("  ✗ Poppler 未配置，无法转换 PDF 为图片", flush=True)
+                    return None
+
+                print(f"  → 正在转换 PDF 为图片...", flush=True)
+                # 转换 PDF 为图片
+                images = convert_from_path(
+                    str(pdf_path),
+                    dpi=150,
+                    poppler_path=poppler_path
+                )
 
                 thumbnails = []
                 for idx, img in enumerate(images):
@@ -158,18 +172,49 @@ class PPTParser:
                     img.save(output_path, "PNG")
                     thumbnails.append(str(output_path))
 
+                print(f"  ✓ 已生成 {len(thumbnails)} 张高质量缩略图", flush=True)
+
                 # 清理临时文件
                 shutil.rmtree(temp_output, ignore_errors=True)
                 return thumbnails
 
             except ImportError:
-                print("  提示: 安装 pdf2image 和 poppler 可获得更好的效果", flush=True)
-                print("  pip install pdf2image", flush=True)
+                print("  ✗ pdf2image 未安装", flush=True)
+                print("  提示: pip install pdf2image", flush=True)
+                return None
+            except Exception as e:
+                print(f"  ✗ PDF 转图片失败: {e}", flush=True)
                 return None
 
-        except Exception as e:
-            print(f"  LibreOffice 转换失败: {e}", flush=True)
+        except subprocess.TimeoutExpired:
+            print(f"  ✗ LibreOffice 转换超时（>60秒）", flush=True)
             return None
+        except subprocess.CalledProcessError as e:
+            stderr = e.stderr.decode('utf-8', errors='ignore') if e.stderr else ''
+            print(f"  ✗ LibreOffice 转换失败: {stderr}", flush=True)
+            return None
+        except Exception as e:
+            print(f"  ✗ LibreOffice 转换异常: {e}", flush=True)
+            return None
+
+    def _find_poppler(self):
+        """从 config.ini 读取 Poppler 路径"""
+        if POPPLER_PATH and Path(POPPLER_PATH).exists():
+            return POPPLER_PATH
+        return None
+
+    def _load_font(self, configured_path: str, size: int):
+        """从 config.ini 加载字体"""
+        from PIL import ImageFont
+
+        if configured_path and Path(configured_path).exists():
+            try:
+                return ImageFont.truetype(configured_path, size)
+            except Exception:
+                pass
+
+        # 使用默认字体
+        return ImageFont.load_default()
 
     def _generate_text_thumbnail(self, pptx_path: Path, output_dir: Path, width: int = 1920, height: int = 1080):
         """生成文本渲染的缩略图（降级方案）"""
@@ -186,19 +231,9 @@ class PPTParser:
 
             draw = ImageDraw.Draw(img)
 
-            # 使用默认字体
-            try:
-                # Windows 字体路径
-                import platform
-                if platform.system() == "Windows":
-                    title_font = ImageFont.truetype("C:/Windows/Fonts/simhei.ttf", 48)  # 黑体
-                    body_font = ImageFont.truetype("C:/Windows/Fonts/simsun.ttc", 24)   # 宋体
-                else:
-                    title_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 48)
-                    body_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
-            except:
-                title_font = ImageFont.load_default()
-                body_font = ImageFont.load_default()
+            # 加载字体
+            title_font = self._load_font(FONT_TITLE, 48)
+            body_font = self._load_font(FONT_BODY, 24)
 
             # 绘制标题
             y_offset = 100

@@ -1,7 +1,11 @@
 anthropic>=0.39.0
 zhipuai>=2.0.0
+openai>=1.0.0
 python-pptx>=1.0.0
 edge-tts>=6.1.0
 Pillow>=10.0.0
-python-magic>=0.4.27
 python-dotenv>=1.0.0
+pdf2image>=1.17.0
+
+# 可选依赖
+# python-magic>=0.4.27  # 文件类型检测（可选）

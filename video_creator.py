@@ -7,9 +7,13 @@ from typing import List, Dict, Any
 
 try:
     from .config import VIDEO_WIDTH, VIDEO_HEIGHT
+    from .utils import decode_subprocess_error
+    from .ffmpeg_utils import find_ffmpeg, find_ffprobe
 except ImportError:
     sys.path.insert(0, str(Path(__file__).parent))
     from config import VIDEO_WIDTH, VIDEO_HEIGHT
+    from utils import decode_subprocess_error
+    from ffmpeg_utils import find_ffmpeg, find_ffprobe
 
 
 class VideoCreator:
@@ -21,6 +25,10 @@ class VideoCreator:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.temp_dir.mkdir(parents=True, exist_ok=True)
 
+        # 获取 FFmpeg 和 FFprobe 路径
+        self.ffmpeg = find_ffmpeg() or "ffmpeg"
+        self.ffprobe = find_ffprobe() or "ffprobe"
+
     def create_segment(self, image_path: str, audio_path: str, output_path: str, duration: float = None) -> bool:
         """创建单个视频片段（图片 + 音频）"""
         if duration is None:
@@ -28,7 +36,7 @@ class VideoCreator:
             duration = self._get_audio_duration(audio_path)
 
         cmd = [
-            "ffmpeg", "-y",
+            self.ffmpeg, "-y",
             "-loop", "1",
             "-i", image_path,
             "-i", audio_path,
@@ -45,23 +53,14 @@ class VideoCreator:
             subprocess.run(cmd, check=True, capture_output=True)
             return True
         except subprocess.CalledProcessError as e:
-            # 尝试多种编码解码错误信息
-            error_msg = str(e)
-            if e.stderr:
-                try:
-                    error_msg = e.stderr.decode('utf-8')
-                except UnicodeDecodeError:
-                    try:
-                        error_msg = e.stderr.decode('gbk')  # Windows 中文编码
-                    except:
-                        error_msg = e.stderr.decode('utf-8', errors='ignore')
+            error_msg = decode_subprocess_error(e)
             print(f"FFmpeg 错误: {error_msg}", flush=True)
             return False
 
     def _get_audio_duration(self, audio_path: str) -> float:
         """获取音频时长"""
         cmd = [
-            "ffprobe", "-v", "error",
+            self.ffprobe, "-v", "error",
             "-show_entries", "format=duration",
             "-of", "default=noprint_wrappers=1:nokey=1",
             audio_path
@@ -91,7 +90,7 @@ class VideoCreator:
                 f.write(f"file '{video_path}'\n")
 
         cmd = [
-            "ffmpeg", "-y",
+            self.ffmpeg, "-y",
             "-f", "concat",
             "-safe", "0",
             "-i", str(list_file),
@@ -103,16 +102,7 @@ class VideoCreator:
             result = subprocess.run(cmd, check=True, capture_output=True)
             return True
         except subprocess.CalledProcessError as e:
-            # 尝试多种编码解码错误信息
-            error_msg = str(e)
-            if e.stderr:
-                try:
-                    error_msg = e.stderr.decode('utf-8')
-                except (UnicodeDecodeError, AttributeError):
-                    try:
-                        error_msg = e.stderr.decode('gbk') if isinstance(e.stderr, bytes) else e.stderr
-                    except:
-                        error_msg = str(e.stderr)
+            error_msg = decode_subprocess_error(e)
             print(f"视频合并错误: {error_msg}", flush=True)
             return False
 
