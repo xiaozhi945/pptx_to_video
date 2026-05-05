@@ -7,12 +7,15 @@
 - ✅ 自动解析 PPT 内容（文本、标题、备注）
 - ✅ 使用 Claude/智谱AI 生成专业讲解脚本
 - ✅ 多语言 TTS 语音合成（支持中英日等多种语言）
-- ✅ 保留原始 PPT 样式（通过 LibreOffice）
+- ✅ **PPT 动画支持（Windows + PowerPoint）**
+- ✅ **自适应渲染后端（PowerPoint/LibreOffice/Pillow）**
+- ✅ 保留原始 PPT 样式
 - ✅ 自动合成高清视频（1920x1080）
 - ✅ 音画同步防护机制
 - ✅ **TTS 并发处理，速度提升 6 倍**
 - ✅ **自动缓存，节省 API 费用**
 - ✅ **自动检查和安装依赖**
+- ✅ **跨平台支持（Windows/Linux/macOS）**
 
 ## 快速开始
 
@@ -41,14 +44,21 @@ pip install -r requirements.txt
   # 或下载: https://ffmpeg.org/download.html
   ```
 
-- **LibreOffice**（可选）：保留原始 PPT 样式
+- **LibreOffice**（推荐）：高质量 PPT 渲染
   - 下载: https://www.libreoffice.org/download/
 
-- **Poppler**（可选）：配合 LibreOffice 使用
+- **Poppler**（推荐）：配合 LibreOffice 使用
   ```bash
   choco install poppler
   pip install pdf2image
   ```
+
+- **Microsoft PowerPoint**（可选，仅 Windows）：动画支持
+  - 安装 PowerPoint 后运行：
+    ```bash
+    pip install pywin32
+    ```
+  - 启用后可导出 PPT 动画效果
 
 ### 3. 配置 API Key
 
@@ -127,6 +137,11 @@ font_body = C:/Windows/Fonts/simhei.ttf  # 黑体
 [llm]
 provider = claude
 
+[rendering]
+# 渲染后端: auto, powerpoint, libreoffice, pillow
+backend = auto  # 自动选择最佳后端
+enable_animation = true  # 启用动画支持（仅 PowerPoint 后端有效）
+
 [tts]
 voice = zh-CN-XiaoxiaoNeural
 rate = +20%%  # 注意：百分号要写成 %%
@@ -198,6 +213,79 @@ python -m pptx_to_video --skip-video
 | 日文 | `ja-JP-NanamiNeural` | 女 | 标准日语 |
 
 完整列表：https://speech.microsoft.com/portal/voicegallery
+
+## PPT 动画支持 🎬
+
+### 渲染后端说明
+
+系统支持 **三种渲染后端**，自动选择最佳方案：
+
+| 后端 | 平台 | 动画支持 | 质量 | 依赖 |
+|------|------|---------|------|------|
+| **PowerPoint** | Windows | ✅ 完整 | ⭐⭐⭐⭐⭐ | Microsoft PowerPoint + pywin32 |
+| **LibreOffice** | 跨平台 | ❌ 静态 | ⭐⭐⭐⭐ | LibreOffice + Poppler |
+| **Pillow** | 跨平台 | ❌ 静态 | ⭐⭐ | 无（内置） |
+
+### Windows 动画支持
+
+**前提条件**：
+- Windows 操作系统
+- 已安装 Microsoft PowerPoint
+
+**安装步骤**：
+```bash
+# 安装 pywin32
+pip install pywin32
+
+# 运行程序（自动使用 PowerPoint 渲染器）
+python -m pptx_to_video
+```
+
+**效果**：
+```
+[4/5] 生成幻灯片缩略图...
+  使用 PowerPoint 渲染器
+  ✓ 支持动画渲染
+  ✓ 已生成 25 个渲染帧
+  ✓ 检测到动画效果，共 25 帧
+    第 3 页: 3 个动画步骤
+    第 5 页: 2 个动画步骤
+```
+
+### Linux/macOS 自动降级
+
+在非 Windows 环境下，系统自动降级到静态渲染：
+
+```bash
+# 直接运行（自动使用 LibreOffice 或 Pillow）
+python -m pptx_to_video
+```
+
+**效果**：
+```
+[4/5] 生成幻灯片缩略图...
+  使用 LibreOffice 渲染器
+  ⚠️  仅支持静态渲染（不支持动画）
+  ✓ 已生成 20 个渲染帧
+```
+
+### 配置渲染后端
+
+在 `config.ini` 中配置：
+
+```ini
+[rendering]
+# auto: 自动选择最佳后端
+# powerpoint: 强制使用 PowerPoint（仅 Windows）
+# libreoffice: 强制使用 LibreOffice
+# pillow: 强制使用 Pillow
+backend = auto
+
+# 是否启用动画支持（仅 PowerPoint 后端有效）
+enable_animation = true
+```
+
+**详细文档**：查看 [ANIMATION_SUPPORT.md](ANIMATION_SUPPORT.md)
 
 ## 性能优化
 
@@ -300,12 +388,57 @@ cat config.ini
 
 注意：`config.ini` 中的百分号要写成 `%%`
 
+### 7. PowerPoint 动画不工作
+
+**Q: 为什么没有检测到动画？**
+
+A: 检查以下几点：
+1. 确认在 Windows 系统上
+2. 确认已安装 Microsoft PowerPoint
+3. 安装 pywin32：`pip install pywin32`
+4. 运行测试：`python test_renderer.py`
+
+如果 PowerPoint 渲染器显示"不可用"，系统会自动降级到静态渲染。
+
+### 8. 动画帧与音频不匹配
+
+**Q: 为什么动画帧数量与音频不匹配？**
+
+A: 当前脚本生成器按幻灯片生成脚本，不支持动画步骤级别。
+
+**临时解决方案**：
+- 禁用动画：在 `config.ini` 中设置 `enable_animation = false`
+- 或手动为每个动画步骤编写脚本
+
+**未来改进**：将更新 LLM prompt 以支持动画步骤级别的脚本生成。
+
 ## 项目结构
 
 ```
 pptx_to_video/
 ├── pptx_to_video.py      # 主程序
 ├── ppt_parser.py         # PPT 解析
+├── ppt_renderer.py       # 渲染器（PowerPoint/LibreOffice/Pillow）
+├── script_generator.py   # AI 脚本生成
+├── tts_service.py        # 语音合成（并发处理）
+├── video_creator.py      # 视频合成
+├── config.py             # 配置管理
+├── utils.py              # 工具函数
+├── ffmpeg_utils.py       # FFmpeg 工具
+├── check_dependencies.py # 依赖检查
+├── test_renderer.py      # 渲染器测试
+├── prompts/              # AI 提示词
+├── requirements.txt      # Python 依赖
+├── .env                  # 配置文件（需自行创建）
+├── config.ini            # 高级配置（可选）
+├── config.ini.example    # 配置示例
+├── input/                # 输入 PPT 目录
+├── output/               # 输出视频目录
+├── temp/                 # 临时文件目录
+├── README.md             # 项目说明
+├── CLAUDE.md             # 开发文档
+└── ANIMATION_SUPPORT.md  # 动画支持文档
+```
 ├── script_generator.py   # AI 脚本生成
 ├── tts_service.py        # 语音合成（并发处理）
 ├── video_creator.py      # 视频合成
@@ -333,22 +466,24 @@ temp/
 └── 你的PPT名称/
     ├── content.txt          # PPT 文本内容
     ├── slide_001.mp3        # 各页音频
-    └── 你的PPT名称_slide_001.png  # 各页图片
+    ├── 你的PPT名称_slide_001.png  # 静态渲染图片
+    └── 你的PPT名称_slide_003_step_002.png  # 动画帧（如果启用动画）
 ```
 
 ## 技术栈
 
 - **AI 模型**: Claude Sonnet 4.6 / 智谱 GLM-4 / DeepSeek Chat / 通义千问 Plus
 - **TTS**: Microsoft Edge TTS（并发处理）
-- **PPT 处理**: python-pptx
-- **PPT 渲染**: LibreOffice
+- **PPT 处理**: python-pptx, PowerPoint COM API (Windows), LibreOffice
 - **PDF 转图片**: pdf2image + Poppler
 - **视频合成**: FFmpeg
 - **图像处理**: Pillow
 
-## 开发文档
+## 相关文档
 
-如果你想了解代码架构或进行二次开发，请查看 [CLAUDE.md](CLAUDE.md)。
+- [CLAUDE.md](CLAUDE.md) - 开发文档和架构说明
+- [ANIMATION_SUPPORT.md](ANIMATION_SUPPORT.md) - 动画支持详细文档
+- [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) - 实现总结
 
 ## 许可证
 
@@ -359,5 +494,7 @@ MIT License
 欢迎提交 Issue 和 Pull Request！
 
 ## 联系方式
+
+如有问题，请提交 Issue。
 
 如有问题，请提交 Issue。
