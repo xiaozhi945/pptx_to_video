@@ -17,7 +17,8 @@
       "Bash(python -c \"from ffmpeg_utils import check_ffmpeg; check_ffmpeg\\(\\)\")",
       "Bash(python *)",
       "Bash(pip install *)",
-      "Bash(./venv/Scripts/pip install *)"
+      "Bash(./venv/Scripts/pip install *)",
+      "Bash(awk '{print $NF}')"
     ]
   }
 }

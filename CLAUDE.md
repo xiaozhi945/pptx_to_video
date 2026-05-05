@@ -59,7 +59,12 @@ PPTX 智能讲解视频生成器 - Automatically converts PowerPoint presentatio
 7. **utils.py** - Utility functions
    - decode_subprocess_error(): handles UTF-8/GBK encoding for subprocess errors
 
-8. **check_dependencies.py** - Dependency checker
+8. **ffmpeg_utils.py** - FFmpeg path detection
+   - Centralized FFmpeg/FFprobe path detection
+   - Checks config.ini, .env, system PATH, and fallback search paths
+   - Used by video_creator.py for video synthesis
+
+9. **check_dependencies.py** - Dependency checker
    - Auto-checks required packages on startup
    - Prompts user to auto-install missing dependencies
    - Uses importlib.util.find_spec() to avoid importing problematic modules
