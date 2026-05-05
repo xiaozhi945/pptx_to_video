@@ -12,9 +12,10 @@ PPTX 智能讲解视频生成器 - Automatically converts PowerPoint presentatio
 - Python 3.10+
 - LLM: Claude Sonnet 4.6 / 智谱 GLM-4 / DeepSeek Chat / 通义千问 Plus
 - TTS: Microsoft Edge TTS (concurrent processing)
-- PPT processing: python-pptx, LibreOffice (for rendering)
+- PPT processing: python-pptx, PowerPoint COM API (Windows), LibreOffice (cross-platform)
 - PDF to image: pdf2image + Poppler
 - Video: FFmpeg
+- **Animation support**: PowerPoint COM API (Windows only)
 
 ## Architecture
 
@@ -28,8 +29,14 @@ PPTX 智能讲解视频生成器 - Automatically converts PowerPoint presentatio
 
 2. **ppt_parser.py** - PPT content extraction
    - Extracts text, titles, notes from PPTX using python-pptx
-   - Generates thumbnails via LibreOffice → PDF → images (preferred) or falls back to text rendering
+   - Uses adaptive rendering backend (PowerPoint/LibreOffice/Pillow)
    - Exports structured text for LLM consumption
+
+2a. **ppt_renderer.py** - Multi-backend PPT rendering
+   - **PowerPointRenderer**: Windows + PowerPoint, supports animation export
+   - **LibreOfficeRenderer**: Cross-platform, static rendering only
+   - **PillowRenderer**: Fallback text rendering
+   - **RendererFactory**: Auto-detects best available backend
 
 3. **script_generator.py** - LLM script generation
    - Supports Claude (Anthropic), 智谱AI, DeepSeek, and 通义千问 providers
@@ -68,6 +75,49 @@ PPTX 智能讲解视频生成器 - Automatically converts PowerPoint presentatio
    - Auto-checks required packages on startup
    - Prompts user to auto-install missing dependencies
    - Uses importlib.util.find_spec() to avoid importing problematic modules
+
+### Rendering Backend Architecture
+
+The system uses an **adaptive multi-backend architecture** for PPT rendering:
+
+**Backend Selection Priority**:
+1. **PowerPoint COM API** (Windows + PowerPoint installed)
+   - ✅ Full animation support
+   - ✅ Perfect fidelity to original PPT
+   - ✅ Exports each animation step as separate frame
+   - ❌ Windows-only, requires Microsoft PowerPoint
+
+2. **LibreOffice** (Cross-platform)
+   - ✅ Cross-platform (Windows/Linux/macOS)
+   - ✅ High-quality static rendering
+   - ❌ No animation support (exports final state only)
+   - Requires: LibreOffice + Poppler + pdf2image
+
+3. **Pillow** (Fallback)
+   - ✅ Always available
+   - ✅ No external dependencies
+   - ❌ Text-only rendering (no images/shapes)
+   - ❌ No animation support
+
+**Configuration**:
+```ini
+[rendering]
+backend = auto  # auto, powerpoint, libreoffice, pillow
+enable_animation = true  # Only effective with PowerPoint backend
+```
+
+**Auto-detection logic** (when `backend = auto`):
+- Windows + PowerPoint installed → PowerPointRenderer
+- LibreOffice available → LibreOfficeRenderer  
+- Otherwise → PillowRenderer (fallback)
+
+**Animation Frame Format**:
+Each rendered frame is a dict with:
+- `path`: Image file path
+- `slide_index`: Slide number (0-indexed)
+- `animation_step`: Animation step (0 = initial state, 1+ = animation steps)
+
+Static renderers always return `animation_step = 0`.
 
 ### Directory Structure
 
@@ -292,6 +342,10 @@ font_body = C:/Windows/Fonts/simhei.ttf
 [llm]
 provider = claude
 
+[rendering]
+backend = auto  # auto, powerpoint, libreoffice, pillow
+enable_animation = true  # Enable animation support (PowerPoint only)
+
 [tts]
 voice = zh-CN-XiaoxiaoNeural
 rate = +20%%  # Note: % must be escaped as %%
@@ -322,12 +376,18 @@ Full list: https://speech.microsoft.com/portal/voicegallery
 
 Must be installed and in PATH:
 - **FFmpeg** - Video encoding (ffmpeg, ffprobe) - REQUIRED
-- **LibreOffice** - PPT rendering (optional but recommended)
+- **LibreOffice** - PPT rendering (optional, for static high-quality rendering)
 - **Poppler** - PDF to image conversion (required if using LibreOffice)
+- **Microsoft PowerPoint** - Animation support (optional, Windows only)
 
 Windows installation via Chocolatey:
 ```powershell
 choco install ffmpeg poppler
+```
+
+For animation support on Windows, install Microsoft PowerPoint and:
+```bash
+pip install pywin32
 ```
 
 ## Common Issues
@@ -358,13 +418,16 @@ Run `python check_dependencies.py` to check for missing packages. The main progr
 - Verify INI syntax: `%` must be `%%`
 - Run `python -c "import config; config.print_config()"` to see active config
 
-## Recent Optimizations (2026-05-02)
+## Recent Optimizations (2026-05-05)
 
-1. **TTS Concurrent Processing** - ~6x speedup using asyncio.gather()
-2. **Intermediate Result Caching** - saves API costs by reusing scripts/audio
-3. **Exponential Backoff Retry** - smarter API retry strategy
-4. **Configurable Paths** - LibreOffice and fonts via config.ini
-5. **Unified Error Handling** - utils.decode_subprocess_error()
-6. **Auto Dependency Installation** - check_dependencies.py on startup
+1. **PPT Animation Support** - PowerPoint COM API for Windows animation rendering
+2. **Adaptive Rendering Backend** - Auto-selects best renderer (PowerPoint/LibreOffice/Pillow)
+3. **Cross-platform Compatibility** - Graceful degradation on Linux (static rendering)
+4. **TTS Concurrent Processing** - ~6x speedup using asyncio.gather()
+5. **Intermediate Result Caching** - saves API costs by reusing scripts/audio
+6. **Exponential Backoff Retry** - smarter API retry strategy
+7. **Configurable Paths** - LibreOffice and fonts via config.ini
+8. **Unified Error Handling** - utils.decode_subprocess_error()
+9. **Auto Dependency Installation** - check_dependencies.py on startup
 
 See git history for detailed changes.

@@ -233,8 +233,24 @@ def main():
 
         # 4. 生成缩略图
         print("[4/5] 生成幻灯片缩略图...", flush=True)
-        thumbnails = parser_mod.generate_thumbnail(pptx_file, file_temp_dir)
-        print(f"  已生成 {len(thumbnails)} 张缩略图", flush=True)
+        frames = parser_mod.generate_thumbnail(pptx_file, file_temp_dir)
+        print(f"  已生成 {len(frames)} 个渲染帧", flush=True)
+
+        # 统计每张幻灯片的帧数
+        slide_frame_counts = {}
+        for frame in frames:
+            slide_idx = frame['slide_index']
+            slide_frame_counts[slide_idx] = slide_frame_counts.get(slide_idx, 0) + 1
+
+        # 检查是否有动画
+        has_animation = any(count > 1 for count in slide_frame_counts.values())
+        if has_animation:
+            print(f"  ✓ 检测到动画效果，共 {sum(slide_frame_counts.values())} 帧", flush=True)
+            for slide_idx, count in sorted(slide_frame_counts.items()):
+                if count > 1:
+                    print(f"    第 {slide_idx + 1} 页: {count} 个动画步骤", flush=True)
+        else:
+            print(f"  → 静态渲染（无动画）", flush=True)
 
         # 5. 合成视频
         if not args.skip_video:
@@ -249,23 +265,44 @@ def main():
             if not audio_files:
                 print("  警告: 没有找到音频文件，跳过视频合成", flush=True)
             else:
-                # 最终验证：确保幻灯片、音频、脚本数量一致
+                # 验证资源数量
                 print(f"  验证资源数量:", flush=True)
-                print(f"    幻灯片: {len(thumbnails)} 张", flush=True)
+                print(f"    渲染帧: {len(frames)} 个", flush=True)
                 print(f"    音频文件: {len(audio_files)} 个", flush=True)
                 print(f"    脚本: {len(scripts)} 条", flush=True)
 
-                if len(thumbnails) != len(audio_files):
-                    print(f"  ❌ 错误: 幻灯片与音频数量不匹配，无法合成视频", flush=True)
-                    print(f"  请检查 TTS 步骤是否完全成功", flush=True)
-                else:
-                    output_video = args.output or str(file_output_dir / f"{pptx_file.stem}.mp4")
-                    video_creator = VideoCreator(file_output_dir, file_temp_dir)
-
-                    if video_creator.create_video(thumbnails, [str(a) for a in audio_files], output_video):
-                        print(f"\n✅ 视频生成完成: {output_video}", flush=True)
+                # 对于有动画的情况，需要确保帧数与音频匹配
+                if has_animation:
+                    # 动画模式：每个动画步骤对应一个音频
+                    if len(frames) != len(audio_files):
+                        print(f"  ❌ 错误: 动画帧({len(frames)})与音频数量({len(audio_files)})不匹配", flush=True)
+                        print(f"  提示: 动画模式下，每个动画步骤需要对应的讲解脚本和音频", flush=True)
                     else:
-                        print("\n❌ 视频生成失败", flush=True)
+                        output_video = args.output or str(file_output_dir / f"{pptx_file.stem}.mp4")
+                        video_creator = VideoCreator(file_output_dir, file_temp_dir)
+
+                        # 提取帧路径
+                        frame_paths = [frame['path'] for frame in frames]
+                        if video_creator.create_video(frame_paths, [str(a) for a in audio_files], output_video):
+                            print(f"\n✅ 视频生成完成: {output_video}", flush=True)
+                        else:
+                            print("\n❌ 视频生成失败", flush=True)
+                else:
+                    # 静态模式：幻灯片数量应与音频匹配
+                    unique_slides = len(set(f['slide_index'] for f in frames))
+                    if unique_slides != len(audio_files):
+                        print(f"  ❌ 错误: 幻灯片({unique_slides})与音频数量({len(audio_files)})不匹配", flush=True)
+                        print(f"  请检查 TTS 步骤是否完全成功", flush=True)
+                    else:
+                        output_video = args.output or str(file_output_dir / f"{pptx_file.stem}.mp4")
+                        video_creator = VideoCreator(file_output_dir, file_temp_dir)
+
+                        # 提取帧路径
+                        frame_paths = [frame['path'] for frame in frames]
+                        if video_creator.create_video(frame_paths, [str(a) for a in audio_files], output_video):
+                            print(f"\n✅ 视频生成完成: {output_video}", flush=True)
+                        else:
+                            print("\n❌ 视频生成失败", flush=True)
 
         print(f"\n📁 输出目录: {file_output_dir}", flush=True)
 

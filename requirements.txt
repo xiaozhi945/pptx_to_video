@@ -7,5 +7,8 @@ Pillow>=10.0.0
 python-dotenv>=1.0.0
 pdf2image>=1.17.0
 
+# Windows 动画支持（仅 Windows 需要）
+pywin32>=306; sys_platform == 'win32'
+
 # 可选依赖
 # python-magic>=0.4.27  # 文件类型检测（可选）

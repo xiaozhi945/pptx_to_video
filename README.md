@@ -431,7 +431,6 @@ pptx_to_video/
 ├── requirements.txt      # Python 依赖
 ├── .env                  # 配置文件（需自行创建）
 ├── config.ini            # 高级配置（可选）
-├── config.ini.example    # 配置示例
 ├── input/                # 输入 PPT 目录
 ├── output/               # 输出视频目录
 ├── temp/                 # 临时文件目录

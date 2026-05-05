@@ -18,7 +18,10 @@
       "Bash(python *)",
       "Bash(pip install *)",
       "Bash(./venv/Scripts/pip install *)",
-      "Bash(awk '{print $NF}')"
+      "Bash(awk '{print $NF}')",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git rm *)"
     ]
   }
 }
