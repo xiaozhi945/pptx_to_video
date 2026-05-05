@@ -54,10 +54,12 @@ pip install -r requirements.txt
   ```
 
 - **Microsoft PowerPoint**（可选，仅 Windows）：动画支持
+  - 下载: https://www.microsoft.com/microsoft-365/powerpoint
   - 安装 PowerPoint 后运行：
     ```bash
     pip install pywin32
     ```
+  - pywin32 下载: https://pypi.org/project/pywin32/
   - 启用后可导出 PPT 动画效果
 
 ### 3. 配置 API Key
@@ -285,8 +287,6 @@ backend = auto
 enable_animation = true
 ```
 
-**详细文档**：查看 [ANIMATION_SUPPORT.md](ANIMATION_SUPPORT.md)
-
 ## 性能优化
 
 ### 自动缓存机制
@@ -437,21 +437,7 @@ pptx_to_video/
 ├── temp/                 # 临时文件目录
 ├── README.md             # 项目说明
 ├── CLAUDE.md             # 开发文档
-└── ANIMATION_SUPPORT.md  # 动画支持文档
-```
-├── script_generator.py   # AI 脚本生成
-├── tts_service.py        # 语音合成（并发处理）
-├── video_creator.py      # 视频合成
-├── config.py             # 配置管理
-├── utils.py              # 工具函数
-├── check_dependencies.py # 依赖检查
-├── prompts/              # AI 提示词
-├── requirements.txt      # Python 依赖
-├── .env                  # 配置文件（需自行创建）
-├── config.ini            # 高级配置（可选）
-├── input/                # 输入 PPT 目录
-├── output/               # 输出视频目录
-└── temp/                 # 临时文件目录
+└── MODELS.md             # 模型说明
 ```
 
 ## 输出文件
