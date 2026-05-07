@@ -47,7 +47,9 @@ class ScriptGenerator:
             max_tokens = MAX_TOKENS
 
         if self.provider == "claude":
-            response = self.client.messages.create(
+            # 使用流式传输以支持长响应
+            full_response = ""
+            with self.client.messages.stream(
                 model=MODEL_NAME,
                 max_tokens=max_tokens,
                 messages=[
@@ -56,8 +58,10 @@ class ScriptGenerator:
                         "content": prompt
                     }
                 ]
-            )
-            return response.content[0].text
+            ) as stream:
+                for text in stream.text_stream:
+                    full_response += text
+            return full_response
 
         elif self.provider == "zhipu":
             response = self.client.chat.completions.create(
@@ -194,3 +198,78 @@ class ScriptGenerator:
             "analysis": analysis,
             "scripts": scripts
         }
+
+    def generate_with_animation(self, ppt_text_content: str, ppt_data: Dict[str, Any], frames: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """为动画模式生成脚本（每个动画帧一条脚本）"""
+        print("  → 动画模式：为每个动画步骤生成讲解", flush=True)
+
+        # 1. 分析 PPT
+        analysis = self.analyze_ppt(ppt_text_content)
+
+        # 2. 构建动画帧信息
+        frames_info = []
+        for idx, frame in enumerate(frames):
+            frames_info.append({
+                "frame_index": idx,  # 全局帧索引（0-based）
+                "slide_index": frame['slide_index'],
+                "animation_step": frame['animation_step'],
+                "path": frame['path']
+            })
+
+        frames_info_text = json.dumps(frames_info, ensure_ascii=False, indent=2)
+
+        # 3. 生成动画脚本
+        print(f"  → 准备为 {len(frames)} 个动画帧生成脚本...", flush=True)
+
+        prompt = self.animation_script_prompt.format(
+            analysis=json.dumps(analysis, ensure_ascii=False),
+            slides=ppt_text_content,
+            frames_info=frames_info_text
+        )
+
+        print("  → 发送请求到 API...", flush=True)
+
+        last_error = None
+        for attempt in range(self.max_retries):
+            try:
+                response_text = self._call_llm(prompt, max_tokens=MAX_TOKENS * 3)
+
+                print("  → 正在处理响应...", flush=True)
+
+                print("  ✓ 动画脚本生成完成", flush=True)
+
+                # 解析脚本
+                try:
+                    if "```json" in response_text:
+                        json_str = response_text.split("```json")[1].split("```")[0]
+                    elif "```" in response_text:
+                        json_str = response_text.split("```")[1].split("```")[0]
+                    else:
+                        json_str = response_text
+
+                    scripts = json.loads(json_str.strip())
+                    print(f"  → 解析得到 {len(scripts)} 条脚本", flush=True)
+
+                    # 验证脚本数量
+                    if len(scripts) != len(frames):
+                        print(f"  ⚠ 警告: 生成的脚本数量({len(scripts)})与动画帧数量({len(frames)})不匹配", flush=True)
+
+                    return scripts if isinstance(scripts, list) else [scripts]
+
+                except json.JSONDecodeError as e:
+                    print(f"  ⚠ 警告: 无法解析脚本 JSON: {e}", flush=True)
+                    print(f"  → 尝试重新生成...", flush=True)
+                    raise
+
+            except Exception as e:
+                last_error = e
+                if attempt < self.max_retries - 1:
+                    delay = self.base_retry_delay * (2 ** attempt)
+                    print(f"  ⚠ API 请求失败 (尝试 {attempt + 1}/{self.max_retries}): {str(e)}", flush=True)
+                    print(f"  → {delay} 秒后重试...", flush=True)
+                    time.sleep(delay)
+                else:
+                    print(f"  ❌ API 请求失败，已重试 {self.max_retries} 次", flush=True)
+
+        # 所有重试都失败
+        raise Exception(f"动画脚本生成失败，错误: {str(last_error)}")

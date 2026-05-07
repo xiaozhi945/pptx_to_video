@@ -5,13 +5,12 @@
 ## 功能特点
 
 - ✅ 自动解析 PPT 内容（文本、标题、备注）
-- ✅ 使用 Claude/智谱AI 生成专业讲解脚本
+- ✅ 使用 Claude/智谱AI/DeepSeek/通义千问 生成专业讲解脚本
 - ✅ 多语言 TTS 语音合成（支持中英日等多种语言）
-- ✅ **PPT 动画支持（Windows + PowerPoint）**
-- ✅ **自适应渲染后端（PowerPoint/LibreOffice/Pillow）**
-- ✅ 保留原始 PPT 样式
+- ✅ **完美音视频同步（FFmpeg 精确合成）**
+- ✅ **PPT 动画完整保留（Windows + PowerPoint）**
+- ✅ 保留原始 PPT 样式和动画效果
 - ✅ 自动合成高清视频（1920x1080）
-- ✅ 音画同步防护机制
 - ✅ **TTS 并发处理，速度提升 6 倍**
 - ✅ **自动缓存，节省 API 费用**
 - ✅ **自动检查和安装依赖**
@@ -37,30 +36,22 @@ pip install -r requirements.txt
 
 ### 2. 安装外部工具
 
-- **FFmpeg**（必需）：视频合成
+- **FFmpeg**（必需）：音视频合成
   ```bash
-  # Windows
+  # Windows (使用 Chocolatey)
   choco install ffmpeg
-  # 或下载: https://ffmpeg.org/download.html
+  
+  # 或手动下载: https://ffmpeg.org/download.html
+  # 下载后配置到 config.ini 的 ffmpeg_path 和 ffprobe_path
   ```
 
-- **LibreOffice**（推荐）：高质量 PPT 渲染
-  - 下载: https://www.libreoffice.org/download/
-
-- **Poppler**（推荐）：配合 LibreOffice 使用
-  ```bash
-  choco install poppler
-  pip install pdf2image
-  ```
-
-- **Microsoft PowerPoint**（可选，仅 Windows）：动画支持
+- **Microsoft PowerPoint**（必需，仅 Windows）：PPT 渲染和动画支持
   - 下载: https://www.microsoft.com/microsoft-365/powerpoint
   - 安装 PowerPoint 后运行：
     ```bash
     pip install pywin32
     ```
   - pywin32 下载: https://pypi.org/project/pywin32/
-  - 启用后可导出 PPT 动画效果
 
 ### 3. 配置 API Key
 
@@ -121,32 +112,16 @@ TTS_PITCH=+0Hz # 音调（-50Hz 到 +50Hz）
 
 ```ini
 [paths]
-# 自定义 LibreOffice 路径（留空则自动检测）
-libreoffice_path = D:\Soft\LibreOffice\program\soffice.exe
-
-# 自定义 FFmpeg 路径（留空则自动检测）
+# FFmpeg 路径（用于音视频合成）
 ffmpeg_path = D:\Soft\ffmpeg\bin\ffmpeg.exe
 ffprobe_path = D:\Soft\ffmpeg\bin\ffprobe.exe
-
-# 自定义 Poppler 路径（留空则自动检测）
-# pdf2image 依赖，用于 LibreOffice PDF 转图片
-poppler_path = D:\Soft\poppler\Library\bin
-
-# 自定义字体路径
-font_title = C:/Windows/Fonts/msyh.ttc  # 微软雅黑
-font_body = C:/Windows/Fonts/simhei.ttf  # 黑体
 
 [llm]
 provider = claude
 
-[rendering]
-# 渲染后端: auto, powerpoint, libreoffice, pillow
-backend = auto  # 自动选择最佳后端
-enable_animation = true  # 启用动画支持（仅 PowerPoint 后端有效）
-
 [tts]
 voice = zh-CN-XiaoxiaoNeural
-rate = +20%%  # 注意：百分号要写成 %%
+rate = +0%%  # 注意：百分号要写成 %%
 pitch = +0Hz
 
 [video]
@@ -278,7 +253,7 @@ python -m pptx_to_video
 ```ini
 [rendering]
 # auto: 自动选择最佳后端
-# powerpoint: 强制使用 PowerPoint（仅 Windows）
+# powerpoint: 强制使用 Microsoft PowerPoint（仅 Windows）
 # libreoffice: 强制使用 LibreOffice
 # pillow: 强制使用 Pillow
 backend = auto

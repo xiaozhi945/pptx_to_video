@@ -1,20 +1,10 @@
-"""PPTX 解析模块 - 提取幻灯片内容和缩略图"""
+"""PPTX 解析模块 - 提取幻灯片内容"""
 import os
 import sys
 import json
 from pathlib import Path
 from typing import List, Dict, Any
 from pptx import Presentation
-
-try:
-    from .config import (LIBREOFFICE_PATH, FONT_TITLE, FONT_BODY, POPPLER_PATH,
-                         RENDER_BACKEND, ENABLE_ANIMATION)
-    from .ppt_renderer import RendererFactory
-except ImportError:
-    sys.path.insert(0, str(Path(__file__).parent))
-    from config import (LIBREOFFICE_PATH, FONT_TITLE, FONT_BODY, POPPLER_PATH,
-                        RENDER_BACKEND, ENABLE_ANIMATION)
-    from ppt_renderer import RendererFactory
 
 
 class PPTParser:
@@ -24,16 +14,6 @@ class PPTParser:
         self.input_dir = Path(input_dir)
         self.temp_dir = Path(temp_dir)
         self.temp_dir.mkdir(parents=True, exist_ok=True)
-
-        # 创建渲染器
-        backend = RENDER_BACKEND if ENABLE_ANIMATION else "auto"
-        self.renderer = RendererFactory.create_renderer(
-            backend=backend,
-            libreoffice_path=LIBREOFFICE_PATH,
-            poppler_path=POPPLER_PATH,
-            font_title=FONT_TITLE,
-            font_body=FONT_BODY
-        )
 
     def find_pptx_files(self) -> List[Path]:
         """查找 input 目录下的所有 pptx 文件"""
@@ -106,21 +86,3 @@ class PPTParser:
 
         output_path.write_text("".join(lines), encoding="utf-8")
         return output_path
-
-    def generate_thumbnail(self, pptx_path: Path, output_dir: Path, width: int = 1920, height: int = 1080):
-        """生成幻灯片缩略图（支持动画）"""
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        print(f"  使用 {self.renderer.get_name()} 渲染器", flush=True)
-        if self.renderer.supports_animation():
-            print(f"  ✓ 支持动画渲染", flush=True)
-        else:
-            print(f"  ⚠️  仅支持静态渲染（不支持动画）", flush=True)
-
-        try:
-            frames = self.renderer.render(pptx_path, output_dir, width, height)
-            print(f"  ✓ 已生成 {len(frames)} 个渲染帧", flush=True)
-            return frames
-        except Exception as e:
-            print(f"  ✗ 渲染失败: {e}", flush=True)
-            raise

@@ -3,7 +3,7 @@
 PPTX 智能讲解视频生成器
 
 根据 PPTX 文件自动生成讲解视频
-流程: PPT解析 -> LLM分析 -> 脚本生成 -> TTS语音 -> FFmpeg合成视频
+流程: PPT解析 -> 脚本生成 -> TTS语音 -> 音频嵌入 -> PowerPoint导出视频
 """
 import os
 import sys
@@ -34,13 +34,6 @@ from config import INPUT_DIR, OUTPUT_DIR, TEMP_DIR, PROJECT_ROOT, ZHIPUAI_API_KE
 from ppt_parser import PPTParser
 from script_generator import ScriptGenerator
 from tts_service import TTSService
-from video_creator import VideoCreator
-from ffmpeg_utils import check_ffmpeg
-
-
-def check_ffmpeg_deprecated():
-    """已弃用：使用 ffmpeg_utils.check_ffmpeg() 代替"""
-    return check_ffmpeg()
 
 
 def main():
@@ -155,8 +148,7 @@ def main():
             if use_cache:
                 print("y", flush=True)
                 with open(script_path, "r", encoding="utf-8") as f:
-                    result = json.load(f)
-                scripts = result.get("scripts", [])
+                    scripts = json.load(f)
                 print(f"  ✓ 已加载缓存脚本，共 {len(scripts)} 条", flush=True)
             else:
                 print("n", flush=True)
@@ -168,35 +160,9 @@ def main():
             result = generator.generate(ppt_text_content, ppt_data)
             scripts = result["scripts"]
 
-        # 验证脚本数量与幻灯片数量匹配
-        expected_count = ppt_data['total_slides']
-        actual_count = len(scripts)
-        if actual_count != expected_count:
-            print(f"  ⚠ 警告: 生成的脚本数量({actual_count})与幻灯片数量({expected_count})不匹配", flush=True)
-
-        # 按 slide_index 排序
-        scripts.sort(key=lambda x: x.get("slide_index", 0))
-
-        # 检测索引是从 0 还是从 1 开始，并标准化为从 0 开始
-        if scripts and scripts[0].get("slide_index", 0) == 1:
-            print(f"  → 检测到索引从 1 开始，自动调整为从 0 开始", flush=True)
-            for script in scripts:
-                if "slide_index" in script:
-                    script["slide_index"] -= 1
-
-        # 验证连续性
-        for i, script in enumerate(scripts):
-            slide_idx = script.get("slide_index", i)
-            if slide_idx != i:
-                print(f"  ⚠ 警告: 脚本索引不连续，期望 {i}，实际 {slide_idx}", flush=True)
-            # 确保每个脚本都有内容
-            if not script.get("script", "").strip():
-                print(f"  ⚠ 警告: 第 {i+1} 页脚本内容为空", flush=True)
-
         # 保存脚本
-        script_path = file_output_dir / "scripts.json"
         with open(script_path, "w", encoding="utf-8") as f:
-            json.dump(result, f, ensure_ascii=False, indent=2)
+            json.dump(scripts, f, ensure_ascii=False, indent=2)
         print(f"  脚本已保存: {script_path}", flush=True)
         print(f"  共生成 {len(scripts)} 条脚本", flush=True)
 
@@ -204,8 +170,11 @@ def main():
         if not args.skip_tts:
             print("[3/5] 语音合成...", flush=True)
 
+            # 使用 slide 前缀
+            audio_prefix = "slide"
+
             # 检查是否已有音频缓存
-            audio_files = sorted(file_temp_dir.glob("slide_*.mp3"))
+            audio_files = sorted(file_temp_dir.glob(f"{audio_prefix}_*.mp3"))
             if ENABLE_CACHE and len(audio_files) == len(scripts):
                 print(f"  → 发现已有音频缓存: {len(audio_files)} 个文件", flush=True)
                 print("  → 是否使用缓存？(y/n，默认 y): ", end="", flush=True)
@@ -219,90 +188,52 @@ def main():
                     print("n", flush=True)
                     print(f"  使用语音: {TTS_VOICE}", flush=True)
                     tts_service = TTSService(file_temp_dir)
-                    audio_results = tts_service.synthesize(scripts)
+                    audio_results = tts_service.synthesize(scripts, prefix=audio_prefix)
                     print(f"  已生成 {len(audio_results)} 个音频文件", flush=True)
             else:
                 print(f"  使用语音: {TTS_VOICE}", flush=True)
                 tts_service = TTSService(file_temp_dir)
-                audio_results = tts_service.synthesize(scripts)
+                audio_results = tts_service.synthesize(scripts, prefix=audio_prefix)
                 print(f"  已生成 {len(audio_results)} 个音频文件", flush=True)
-
-                # 验证音频生成结果
-                if len(audio_results) != len(scripts):
-                    print(f"  ⚠ 警告: 音频数量({len(audio_results)})与脚本数量({len(scripts)})不匹配", flush=True)
-
-        # 4. 生成缩略图
-        print("[4/5] 生成幻灯片缩略图...", flush=True)
-        frames = parser_mod.generate_thumbnail(pptx_file, file_temp_dir)
-        print(f"  已生成 {len(frames)} 个渲染帧", flush=True)
-
-        # 统计每张幻灯片的帧数
-        slide_frame_counts = {}
-        for frame in frames:
-            slide_idx = frame['slide_index']
-            slide_frame_counts[slide_idx] = slide_frame_counts.get(slide_idx, 0) + 1
-
-        # 检查是否有动画
-        has_animation = any(count > 1 for count in slide_frame_counts.values())
-        if has_animation:
-            print(f"  ✓ 检测到动画效果，共 {sum(slide_frame_counts.values())} 帧", flush=True)
-            for slide_idx, count in sorted(slide_frame_counts.items()):
-                if count > 1:
-                    print(f"    第 {slide_idx + 1} 页: {count} 个动画步骤", flush=True)
         else:
-            print(f"  → 静态渲染（无动画）", flush=True)
+            print("[3/5] 跳过语音合成", flush=True)
 
-        # 5. 合成视频
+        # 4. 渲染视频（使用音频嵌入方案）
         if not args.skip_video:
-            if not check_ffmpeg():
-                print("错误: FFmpeg 是合成视频所必需的", flush=True)
-                sys.exit(1)
-            print("[5/5] 合成视频...", flush=True)
+            print("[4/5] 渲染视频（嵌入音频）...", flush=True)
 
-            # 获取音频文件列表
+            # 获取音频文件
             audio_files = sorted(file_temp_dir.glob("slide_*.mp3"))
 
             if not audio_files:
-                print("  警告: 没有找到音频文件，跳过视频合成", flush=True)
+                print("  ⚠️  警告: 没有找到音频文件，跳过视频生成", flush=True)
+            elif len(audio_files) != ppt_data['total_slides']:
+                print(f"  ❌ 错误: 音频文件数量({len(audio_files)})与幻灯片数量({ppt_data['total_slides']})不匹配", flush=True)
             else:
                 # 验证资源数量
                 print(f"  验证资源数量:", flush=True)
-                print(f"    渲染帧: {len(frames)} 个", flush=True)
+                print(f"    幻灯片: {ppt_data['total_slides']} 张", flush=True)
                 print(f"    音频文件: {len(audio_files)} 个", flush=True)
                 print(f"    脚本: {len(scripts)} 条", flush=True)
 
-                # 对于有动画的情况，需要确保帧数与音频匹配
-                if has_animation:
-                    # 动画模式：每个动画步骤对应一个音频
-                    if len(frames) != len(audio_files):
-                        print(f"  ❌ 错误: 动画帧({len(frames)})与音频数量({len(audio_files)})不匹配", flush=True)
-                        print(f"  提示: 动画模式下，每个动画步骤需要对应的讲解脚本和音频", flush=True)
-                    else:
-                        output_video = args.output or str(file_output_dir / f"{pptx_file.stem}.mp4")
-                        video_creator = VideoCreator(file_output_dir, file_temp_dir)
+                # 使用 PowerPoint 音频嵌入方案
+                from ppt_renderer import PowerPointRenderer
+                renderer = PowerPointRenderer()
 
-                        # 提取帧路径
-                        frame_paths = [frame['path'] for frame in frames]
-                        if video_creator.create_video(frame_paths, [str(a) for a in audio_files], output_video):
-                            print(f"\n✅ 视频生成完成: {output_video}", flush=True)
-                        else:
-                            print("\n❌ 视频生成失败", flush=True)
+                if not renderer.is_available():
+                    print("  ❌ 错误: PowerPoint 不可用（需要 Windows + Microsoft PowerPoint）", flush=True)
                 else:
-                    # 静态模式：幻灯片数量应与音频匹配
-                    unique_slides = len(set(f['slide_index'] for f in frames))
-                    if unique_slides != len(audio_files):
-                        print(f"  ❌ 错误: 幻灯片({unique_slides})与音频数量({len(audio_files)})不匹配", flush=True)
-                        print(f"  请检查 TTS 步骤是否完全成功", flush=True)
-                    else:
-                        output_video = args.output or str(file_output_dir / f"{pptx_file.stem}.mp4")
-                        video_creator = VideoCreator(file_output_dir, file_temp_dir)
+                    output_video = args.output or str(file_output_dir / f"{pptx_file.stem}.mp4")
+                    try:
+                        renderer.render(pptx_file, audio_files, Path(output_video))
+                        print(f"\n✅ 视频生成完成: {output_video}", flush=True)
+                    except Exception as e:
+                        print(f"\n❌ 视频生成失败: {e}", flush=True)
+        else:
+            print("[4/5] 跳过视频生成", flush=True)
 
-                        # 提取帧路径
-                        frame_paths = [frame['path'] for frame in frames]
-                        if video_creator.create_video(frame_paths, [str(a) for a in audio_files], output_video):
-                            print(f"\n✅ 视频生成完成: {output_video}", flush=True)
-                        else:
-                            print("\n❌ 视频生成失败", flush=True)
+        # 5. 完成
+        print("[5/5] 完成", flush=True)
 
         print(f"\n📁 输出目录: {file_output_dir}", flush=True)
 

@@ -38,6 +38,7 @@ def test_renderers():
     print("\n4. 自动选择渲染器:")
     auto_renderer = RendererFactory.create_renderer(
         backend="auto",
+        enable_animation=True,
         libreoffice_path=LIBREOFFICE_PATH,
         poppler_path=POPPLER_PATH,
         font_title=FONT_TITLE,

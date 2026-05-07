@@ -83,19 +83,8 @@ TTS_RATE = get_config("tts", "rate", "TTS_RATE", "+0%")
 TTS_PITCH = get_config("tts", "pitch", "TTS_PITCH", "+0Hz")
 
 # 外部工具路径配置（仅从 config.ini 读取）
-LIBREOFFICE_PATH = get_config("paths", "libreoffice_path", None, "")
-FFMPEG_PATH = get_config("paths", "ffmpeg_path", None, "")
 FFPROBE_PATH = get_config("paths", "ffprobe_path", None, "")
-POPPLER_PATH = get_config("paths", "poppler_path", None, "")
-
-# 字体路径配置（仅从 config.ini 读取）
-FONT_TITLE = get_config("paths", "font_title", None, "")
-FONT_BODY = get_config("paths", "font_body", None, "")
-
-# 渲染后端配置
-RENDER_BACKEND = get_config("rendering", "backend", "RENDER_BACKEND", "auto").lower()
-ENABLE_ANIMATION = get_config_bool("rendering", "enable_animation", "ENABLE_ANIMATION", True)
-
+FFMPEG_PATH = get_config("paths", "ffmpeg_path", None, "")
 # 视频配置
 VIDEO_WIDTH = get_config_int("video", "width", "VIDEO_WIDTH", 1920)
 VIDEO_HEIGHT = get_config_int("video", "height", "VIDEO_HEIGHT", 1080)
@@ -132,11 +121,8 @@ def print_config():
     print(f"模型: {MODEL_NAME}")
     print(f"TTS 语音: {TTS_VOICE}")
     print(f"视频分辨率: {VIDEO_WIDTH}x{VIDEO_HEIGHT}")
-    print(f"LibreOffice 路径: {LIBREOFFICE_PATH or '(自动检测)'}")
-    print(f"标题字体: {FONT_TITLE or '(使用默认)'}")
-    print(f"正文字体: {FONT_BODY or '(使用默认)'}")
-    print(f"渲染后端: {RENDER_BACKEND}")
-    print(f"启用动画: {ENABLE_ANIMATION}")
+    print(f"FFmpeg 路径: {FFMPEG_PATH or '(自动检测)'}")
+    print(f"FFprobe 路径: {FFPROBE_PATH or '(自动检测)'}")
     print(f"并发 TTS: {ENABLE_CONCURRENT_TTS}")
     print(f"启用缓存: {ENABLE_CACHE}")
     print(f"最大重试次数: {MAX_RETRIES}")
