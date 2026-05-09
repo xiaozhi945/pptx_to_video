@@ -103,39 +103,67 @@ LLM_PROVIDER=claude  # claude, zhipu, deepseek, qianwen
 
 # API Keys（根据使用的提供商配置对应的 Key）
 ANTHROPIC_API_KEY=sk-ant-your-key-here
-ANTHROPIC_BASE_URL=https://api.anthropic.com  # 可选，用于 Claude API 中转站
 ZHIPUAI_API_KEY=your-key-here
 DEEPSEEK_API_KEY=your-key-here
 QIANWEN_API_KEY=your-key-here
 
-# TTS 语音
-TTS_VOICE=zh-CN-XiaoxiaoNeural  # 中文女声
+# Claude API 中转站（可选）
+# 如果使用第三方 Claude API 中转服务，配置此项
+ANTHROPIC_BASE_URL=https://api.anthropic.com  # 默认官方地址
+# ANTHROPIC_BASE_URL=https://your-proxy-url.com  # 中转站地址示例
+
+# 自定义模型（可选）
+# 如果不配置，将使用各提供商的默认模型
+# LLM_MODEL=claude-opus-4-7  # Claude 自定义模型
+# LLM_MODEL=glm-4-plus       # 智谱自定义模型
+
+# TTS 语音配置
+TTS_VOICE=zh-CN-XiaoxiaoNeural  # 中文女声（系统会自动识别语言）
 TTS_RATE=+0%   # 语速（-50% 到 +100%）
 TTS_PITCH=+0Hz # 音调（-50Hz 到 +50Hz）
 ```
 
 ### 支持的 LLM 提供商
 
-| 提供商 | 模型 | API Key 获取 | 特点 |
-|--------|------|-------------|------|
-| **claude** | Claude Sonnet 4.6 | https://console.anthropic.com/ | 推理能力强，支持长文本 |
-| **zhipu** | GLM-4 | https://open.bigmodel.cn/ | 国内访问快，中文友好 |
-| **deepseek** | DeepSeek Chat | https://platform.deepseek.com/ | 性价比高，推理能力强 |
-| **qianwen** | 通义千问 Plus | https://dashscope.console.aliyun.com/ | 阿里云服务，稳定可靠 |
+| 提供商 | 默认模型 | API Key 获取 | 特点 |
+|--------|---------|-------------|------|
+| **claude** | claude-sonnet-4-6 | https://console.anthropic.com/ | 推理能力强，支持长文本 |
+| **zhipu** | glm-4 | https://open.bigmodel.cn/ | 国内访问快，中文友好 |
+| **deepseek** | deepseek-chat | https://platform.deepseek.com/ | 性价比高，推理能力强 |
+| **qianwen** | qwen-plus | https://dashscope.console.aliyun.com/ | 阿里云服务，稳定可靠 |
 
-**自定义模型**：可以通过配置文件指定其他模型，如果不配置则使用上表中的默认模型。
+#### 自定义模型
+
+如果不配置模型，将使用上表中的默认模型。可以通过以下方式自定义：
+
+**方式 1：通过 .env 文件**
+```env
+LLM_PROVIDER=claude
+LLM_MODEL=claude-opus-4-7  # 使用更强大的 Opus 模型
+```
+
+**方式 2：通过 config.ini 文件**
+```ini
+[llm]
+provider = claude
+model = claude-opus-4-7
+```
+
+#### Claude API 中转站配置
+
+如果使用第三方 Claude API 中转服务（例如国内中转站），可以配置自定义 base_url：
+
+```env
+# .env
+ANTHROPIC_BASE_URL=https://your-proxy-url.com
+```
+
+或
 
 ```ini
 # config.ini
 [llm]
-provider = claude
-model = claude-opus-4-7  # 自定义模型
-```
-
-或在 `.env` 中：
-```env
-LLM_PROVIDER=claude
-LLM_MODEL=claude-opus-4-7
+anthropic_base_url = https://your-proxy-url.com
 ```
 
 ### 高级配置（config.ini 文件）
@@ -213,13 +241,38 @@ python pptx_to_video.py --skip-video
 
 ### 智能语言匹配
 
-**重要特性**：系统会根据配置的 TTS 语音自动识别语言，并让 AI 生成对应语言的脚本。
+**核心特性**：系统会根据配置的 TTS 语音**自动识别目标语言**，并指示 AI 生成对应语言的脚本。
 
-- 配置 `zh-CN-XiaoxiaoNeural`（中文语音）→ AI 自动生成中文脚本
-- 配置 `en-US-AriaNeural`（英文语音）→ AI 自动生成英文脚本
-- 配置 `ja-JP-NanamiNeural`（日文语音）→ AI 自动生成日文脚本
+#### 工作原理
 
-**语音和脚本语言必须匹配**，否则 TTS 会失败并报错 "No audio was received"。系统的自动匹配机制确保不会出现语言不匹配的问题。
+1. **语言识别**：从 TTS 语音配置中提取语言代码
+   - `zh-CN-XiaoxiaoNeural` → 识别为中文
+   - `en-US-AriaNeural` → 识别为英文
+   - `ja-JP-NanamiNeural` → 识别为日文
+
+2. **脚本生成**：AI 自动使用识别出的语言生成讲解脚本
+
+3. **语音合成**：TTS 使用配置的语音合成音频
+
+**优势**：
+- ✅ 语音和脚本语言始终匹配，避免 TTS 合成失败
+- ✅ 无需手动指定脚本语言
+- ✅ 支持 20+ 种语言自动识别
+
+#### 示例
+
+```ini
+# config.ini
+[tts]
+voice = zh-CN-XiaoxiaoNeural  # 配置中文语音
+```
+
+系统自动：
+1. 识别语言为中文
+2. 指示 AI 生成中文脚本
+3. 使用中文语音合成音频
+
+**重要**：如果手动修改 TTS 语音配置，系统会自动调整脚本语言，无需其他操作。
 
 ### 常用语音
 
