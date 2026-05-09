@@ -65,6 +65,7 @@ LLM_PROVIDER = get_config("llm", "provider", "LLM_PROVIDER", "claude").lower()
 
 # Claude API 配置
 ANTHROPIC_API_KEY = get_config("llm", "anthropic_api_key", "ANTHROPIC_API_KEY", "")
+ANTHROPIC_BASE_URL = get_config("llm", "anthropic_base_url", "ANTHROPIC_BASE_URL", "")
 
 # 智谱 AI API 配置
 ZHIPUAI_API_KEY = get_config("llm", "zhipuai_api_key", "ZHIPUAI_API_KEY", "")
@@ -82,6 +83,48 @@ TTS_VOICE = get_config("tts", "voice", "TTS_VOICE", "zh-CN-XiaoxiaoNeural")
 TTS_RATE = get_config("tts", "rate", "TTS_RATE", "+0%")
 TTS_PITCH = get_config("tts", "pitch", "TTS_PITCH", "+0Hz")
 
+# 从 TTS_VOICE 自动识别脚本语言
+def get_language_from_voice(voice: str) -> str:
+    """
+    从 TTS voice 配置中提取语言
+
+    Args:
+        voice: TTS voice 名称，如 zh-CN-XiaoxiaoNeural
+
+    Returns:
+        语言名称（英文），如 Chinese, English, Japanese
+    """
+    # 提取语言代码（前5个字符，如 zh-CN, en-US）
+    lang_code = voice.split("-")[0].lower() if "-" in voice else voice[:2].lower()
+
+    # 语言代码映射
+    language_map = {
+        "zh": "Chinese",      # 中文
+        "en": "English",      # 英文
+        "ja": "Japanese",     # 日文
+        "ko": "Korean",       # 韩文
+        "fr": "French",       # 法文
+        "de": "German",       # 德文
+        "es": "Spanish",      # 西班牙文
+        "it": "Italian",      # 意大利文
+        "pt": "Portuguese",   # 葡萄牙文
+        "ru": "Russian",      # 俄文
+        "ar": "Arabic",       # 阿拉伯文
+        "hi": "Hindi",        # 印地文
+        "th": "Thai",         # 泰文
+        "vi": "Vietnamese",   # 越南文
+        "id": "Indonesian",   # 印尼文
+        "ms": "Malay",        # 马来文
+        "tr": "Turkish",      # 土耳其文
+        "pl": "Polish",       # 波兰文
+        "nl": "Dutch",        # 荷兰文
+        "sv": "Swedish",      # 瑞典文
+    }
+
+    return language_map.get(lang_code, "Chinese")  # 默认中文
+
+SCRIPT_LANGUAGE = get_language_from_voice(TTS_VOICE)
+
 # 外部工具路径配置（仅从 config.ini 读取）
 FFPROBE_PATH = get_config("paths", "ffprobe_path", None, "")
 FFMPEG_PATH = get_config("paths", "ffmpeg_path", None, "")
@@ -97,16 +140,16 @@ BASE_RETRY_DELAY = get_config_int("performance", "base_retry_delay", "BASE_RETRY
 
 # LLM 配置（根据提供商自动选择）
 if LLM_PROVIDER == "claude":
-    MODEL_NAME = "claude-sonnet-4-6"  # Claude Sonnet 4.6
+    MODEL_NAME = get_config("llm", "model", "LLM_MODEL", "claude-sonnet-4-6")  # Claude Sonnet 4.6
     MAX_TOKENS = 8192
 elif LLM_PROVIDER == "zhipu":
-    MODEL_NAME = "glm-4"  # 智谱 GLM-4
+    MODEL_NAME = get_config("llm", "model", "LLM_MODEL", "glm-4")  # 智谱 GLM-4
     MAX_TOKENS = 4096
 elif LLM_PROVIDER == "deepseek":
-    MODEL_NAME = "deepseek-chat"  # DeepSeek Chat
+    MODEL_NAME = get_config("llm", "model", "LLM_MODEL", "deepseek-chat")  # DeepSeek Chat
     MAX_TOKENS = 8192
 elif LLM_PROVIDER == "qianwen":
-    MODEL_NAME = "qwen-plus"  # 通义千问 Plus
+    MODEL_NAME = get_config("llm", "model", "LLM_MODEL", "qwen-plus")  # 通义千问 Plus
     MAX_TOKENS = 8192
 else:
     raise ValueError(f"不支持的 LLM 提供商: {LLM_PROVIDER}，支持: claude, zhipu, deepseek, qianwen")

@@ -6,10 +6,10 @@ from pathlib import Path
 from typing import Dict, Any, List
 
 try:
-    from .config import MODEL_NAME, MAX_TOKENS, LLM_PROVIDER, MAX_RETRIES, BASE_RETRY_DELAY, DEEPSEEK_BASE_URL, QIANWEN_BASE_URL
+    from .config import MODEL_NAME, MAX_TOKENS, LLM_PROVIDER, MAX_RETRIES, BASE_RETRY_DELAY, DEEPSEEK_BASE_URL, QIANWEN_BASE_URL, SCRIPT_LANGUAGE
 except ImportError:
     sys.path.insert(0, str(Path(__file__).parent))
-    from config import MODEL_NAME, MAX_TOKENS, LLM_PROVIDER, MAX_RETRIES, BASE_RETRY_DELAY, DEEPSEEK_BASE_URL, QIANWEN_BASE_URL
+    from config import MODEL_NAME, MAX_TOKENS, LLM_PROVIDER, MAX_RETRIES, BASE_RETRY_DELAY, DEEPSEEK_BASE_URL, QIANWEN_BASE_URL, SCRIPT_LANGUAGE
 
 
 class ScriptGenerator:
@@ -139,6 +139,7 @@ class ScriptGenerator:
         print("  → 准备生成参数...", flush=True)
 
         prompt = self.script_prompt.format(
+            language=SCRIPT_LANGUAGE,
             analysis=json.dumps(analysis, ensure_ascii=False),
             slides=slides_content
         )

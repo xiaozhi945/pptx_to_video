@@ -17,7 +17,7 @@ class PPTParser:
 
     def find_pptx_files(self) -> List[Path]:
         """查找 input 目录下的所有 pptx 文件"""
-        return list(self.input_dir.glob("*.pptx"))
+        return [f for f in self.input_dir.glob("*.pptx") if not f.name.startswith("~$")]
 
     def parse_slide(self, slide, slide_index: int) -> Dict[str, Any]:
         """解析单张幻灯片内容"""
@@ -34,11 +34,7 @@ class PPTParser:
 
         # 提取所有文本
         for shape in slide.shapes:
-            if shape.has_text_frame:
-                for paragraph in shape.text_frame.paragraphs:
-                    text = paragraph.text.strip()
-                    if text and text != content["title"]:
-                        content["texts"].append(text)
+            self._extract_shape_text(shape, content)
 
         # 提取备注
         if slide.has_notes_slide and slide.notes_slide.notes_text_frame:
@@ -46,6 +42,33 @@ class PPTParser:
             content["notes"] = notes_text
 
         return content
+
+    def _extract_shape_text(self, shape, content: Dict[str, Any]):
+        """递归提取 shape 中的文本（支持普通文本、表格、组合）"""
+        if shape.has_text_frame:
+            # 普通文本框、标题等
+            for paragraph in shape.text_frame.paragraphs:
+                text = paragraph.text.strip()
+                if text and text != content["title"]:
+                    content["texts"].append(text)
+        elif shape.shape_type == 19:  # TABLE
+            # 提取表格中的文本
+            try:
+                table = shape.table
+                for row in table.rows:
+                    for cell in row.cells:
+                        text = cell.text.strip()
+                        if text and text != content["title"]:
+                            content["texts"].append(text)
+            except Exception:
+                pass  # 忽略表格解析错误
+        elif shape.shape_type == 6:  # GROUP
+            # 递归提取组合对象中的文本
+            try:
+                for sub_shape in shape.shapes:
+                    self._extract_shape_text(sub_shape, content)
+            except Exception:
+                pass  # 忽略组合解析错误
 
     def parse(self, pptx_path: Path) -> Dict[str, Any]:
         """解析整个 PPTX 文件"""

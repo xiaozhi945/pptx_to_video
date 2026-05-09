@@ -24,9 +24,12 @@ def check_and_install_dependencies():
         ("openai", "openai>=1.0.0"),
         ("pptx", "python-pptx>=1.0.0"),
         ("edge_tts", "edge-tts>=6.1.0"),
-        ("PIL", "Pillow>=10.0.0"),
         ("dotenv", "python-dotenv>=1.0.0"),
     ]
+
+    # Windows 平台才需要 pywin32
+    if sys.platform == "win32":
+        required_packages.append(("win32com", "pywin32>=306"))
 
     missing_packages = []
 

@@ -4,310 +4,151 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-PPTX 智能讲解视频生成器 - Automatically converts PowerPoint presentations into narrated videos using AI-generated scripts and text-to-speech.
+PPTX 智能讲解视频生成器 - Converts PowerPoint presentations into narrated videos using AI-generated scripts and text-to-speech.
 
 **Pipeline**: PPT parsing → LLM script generation → TTS synthesis → PowerPoint video export (no audio) → FFmpeg audio composition
 
-**Tech Stack**:
-- Python 3.10+
-- LLM: Claude Sonnet 4.6 / 智谱 GLM-4 / DeepSeek Chat / 通义千问 Plus
-- TTS: Microsoft Edge TTS (concurrent processing)
-- PPT processing: python-pptx (parsing), PowerPoint COM API (Windows, video export)
-- Video: PowerPoint native video export + FFmpeg audio composition
-- Audio/Video tools: FFmpeg, FFprobe
+**Tech Stack**: Python 3.10+, python-pptx, PowerPoint COM API (Windows only), edge-tts, FFmpeg
 
-## Architecture
-
-### Core Modules
-
-1. **pptx_to_video.py** - Main orchestrator
-   - Coordinates the full pipeline with FFmpeg composition workflow
-   - **Pipeline order**: Parse → Generate scripts → TTS → Export video (no audio) → FFmpeg compose audio
-   - Validates resource counts (slides, audio, scripts) before processing
-   - Handles CLI arguments and error reporting
-   - Checks and auto-installs dependencies on startup
-
-2. **ppt_parser.py** - PPT content extraction
-   - Extracts text, titles, notes from PPTX using python-pptx
-   - Exports structured text for LLM consumption
-
-3. **ppt_renderer.py** - PowerPoint video rendering with FFmpeg composition
-   - **PowerPointRenderer**: Windows + PowerPoint, supports animation
-   - Sets slide transition timing based on audio duration
-   - Exports video WITHOUT audio using CreateVideo API
-   - Uses FFmpeg to precisely compose audio into video
-   - Handles CreateVideoStatus monitoring (status 3 may indicate success despite "failed" status)
-
-4. **script_generator.py** - LLM script generation
-   - Supports Claude (Anthropic), 智谱AI, DeepSeek, and 通义千问 providers
-   - Generates one script per slide
-   - Two-phase: analyze PPT structure, then generate per-slide narration scripts
-   - Includes exponential backoff retry logic (2s → 4s → 8s)
-   - Parses JSON from LLM responses (handles markdown code blocks)
-   - Uses OpenAI-compatible API for DeepSeek and 通义千问
-
-5. **tts_service.py** - Text-to-speech synthesis
-   - Uses edge-tts for multi-language voice synthesis
-   - **Concurrent processing**: generates all MP3s in parallel using asyncio.gather()
-   - Generates audio files with slide prefix: slide_001.mp3, slide_002.mp3, etc.
-   - Configurable voice, rate, pitch via .env or config.ini
-
-6. **config.py** - Configuration management
-   - Loads config.ini (highest priority), then .env, then defaults
-   - Defines paths: input/, output/, temp/
-   - Model selection based on LLM_PROVIDER
-   - Performance settings: concurrent TTS, caching, retry strategy
-
-7. **ffmpeg_utils.py** - FFmpeg/FFprobe utilities
-   - **get_audio_duration()**: Extracts audio file duration using FFprobe
-   - **find_ffmpeg()**: Locates FFmpeg executable (config.ini → system PATH)
-   - **find_ffprobe()**: Locates FFprobe executable
-   - **compose_audio_video()**: Composes multiple audio files into video with frame-level precision
-   - Used by ppt_renderer.py for audio-video composition
-
-8. **check_dependencies.py** - Dependency checker
-   - Auto-checks required packages on startup
-   - Prompts user to auto-install missing dependencies
-   - Uses importlib.util.find_spec() to avoid importing problematic modules
-
-### FFmpeg Audio Composition Architecture
-
-The system uses **FFmpeg post-composition** for perfect audio-video synchronization:
-
-**Workflow**:
-1. **Parse PPT**: Extract slide content using python-pptx
-2. **Generate Scripts**: LLM generates narration for each slide
-3. **TTS Synthesis**: Edge TTS generates MP3 files (slide_001.mp3, slide_002.mp3, ...)
-4. **Set Slide Timing**: PowerPoint slide transitions set to match audio durations
-5. **Export Video (No Audio)**: PowerPoint's `CreateVideo()` exports MP4 with animations only
-6. **FFmpeg Composition**: 
-   - Concatenate all audio files in order
-   - Merge concatenated audio with video
-   - Frame-level precision (33.3ms at 30fps)
-
-**Key Advantages**:
-- ✅ **Perfect audio-video synchronization** (frame-level precision via FFmpeg)
-- ✅ **Full animation support** (all PowerPoint animations preserved)
-- ✅ **Audio plays immediately** when slide appears (not after animations)
-- ✅ **Industry-standard workflow** (same as professional video editing)
-- ✅ **Complete control** over audio timing
-
-**Requirements**:
-- Windows OS
-- Microsoft PowerPoint 2013 or later
-- pywin32 (for COM API access)
-- FFmpeg and FFprobe
-
-### FFmpeg Composition Details
-
-**Audio Concatenation**:
-```python
-# Create concat list file
-file 'path/to/slide_001.mp3'
-file 'path/to/slide_002.mp3'
-...
-
-# Concatenate audio
-ffmpeg -f concat -safe 0 -i concat_list.txt -c copy merged_audio.mp3
-```
-
-**Audio-Video Merge**:
-```python
-ffmpeg -i video_no_audio.mp4 -i merged_audio.mp3 \
-  -c:v copy \      # Copy video stream (no re-encoding)
-  -c:a aac \       # Encode audio to AAC
-  -b:a 192k \      # Audio bitrate
-  -shortest \      # Match shortest stream
-  output.mp4
-```
-
-**Precision**:
-- Frame-level accuracy: 33.3ms at 30fps, 16.7ms at 60fps
-- Audio starts exactly when slide appears
-- No delay or desynchronization issues
-
-### PowerPoint COM API Details
-
-**Slide Timing**:
-```python
-slide.SlideShowTransition.AdvanceOnTime = True
-slide.SlideShowTransition.AdvanceTime = duration  # seconds
-```
-
-**Video Export (No Audio)**:
-```python
-presentation.CreateVideo(
-    filename,
-    UseTimingsAndNarrations=True,  # Use slide timings
-    DefaultSlideDuration=5,        # Fallback (not used when AdvanceTime is set)
-    VerticalResolution=1080,       # 1080p
-    FramesPerSecond=30,
-    Quality=80                     # 1-100
-)
-```
-
-**Status Monitoring**:
-- `CreateVideoStatus`: 0=未开始, 1=进行中, 2=完成, 3=失败
-- **Important**: Status 3 (failed) may still produce a valid video file
-- Always check file existence and size (>100KB) even when status shows failure
-
-## Configuration
-
-**config.ini** (highest priority):
-```ini
-[paths]
-ffmpeg_path = D:\Soft\ffmpeg\bin\ffmpeg.exe
-ffprobe_path = D:\Soft\ffmpeg\bin\ffprobe.exe
-
-[llm]
-provider = claude
-
-[tts]
-voice = zh-CN-XiaoxiaoNeural
-rate = +0%
-pitch = +0Hz
-
-[video]
-width = 1920
-height = 1080
-
-[performance]
-enable_concurrent_tts = true
-enable_cache = true
-max_retries = 3
-base_retry_delay = 2
-```
-
-**Environment Variables** (.env):
-- `ANTHROPIC_API_KEY`: Claude API key
-- `ZHIPUAI_API_KEY`: 智谱AI API key
-- `DEEPSEEK_API_KEY`: DeepSeek API key
-- `QIANWEN_API_KEY`: 通义千问 API key
-
-## Usage
+## Commands
 
 ```bash
 # Basic usage (processes all PPTX in input/)
 python pptx_to_video.py
 
-# Specify input file
-python pptx_to_video.py --input path/to/presentation.pptx
+# Process a specific file
+python pptx_to_video.py --input path/to/file.pptx
 
-# Specify output path
-python pptx_to_video.py --output path/to/output.mp4
+# Skip steps during development
+python pptx_to_video.py --skip-tts --skip-video    # scripts only
+python pptx_to_video.py --skip-video               # scripts + TTS
 
-# Use specific LLM provider
-python pptx_to_video.py --provider claude
+# Switch LLM provider
+python pptx_to_video.py --provider claude|zhipu|deepseek|qianwen
 
-# Skip TTS (use existing audio)
-python pptx_to_video.py --skip-tts
+# Print current configuration
+python -c "import config; config.print_config()"
 
-# Skip video generation (only generate scripts and audio)
-python pptx_to_video.py --skip-video
-
-# List available PPTX files
+# List available PPTX files in input/
 python pptx_to_video.py --list
+
+# Clear cache to force regeneration
+rm -rf output/*/scripts.json temp/*/slide_*.mp3
 ```
 
-## Development Notes
+## Architecture
 
-### Audio-Video Synchronization
+### Module dependency and import pattern
 
-The system achieves perfect synchronization using FFmpeg post-composition:
-1. PowerPoint exports video with correct slide timing (based on audio durations)
-2. FFmpeg concatenates all audio files in order
-3. FFmpeg merges audio with video using `-c:v copy` (no video re-encoding)
-4. Result: Frame-level precision with zero desynchronization
+Every module uses a dual-import pattern to support both `python -m` and direct execution:
 
-**Why FFmpeg instead of PowerPoint audio embedding?**
-- PowerPoint's `CreateVideo` with embedded audio has limitations with animations
-- Audio may play after animations complete, not simultaneously
-- FFmpeg provides complete control over audio timing
-- Industry-standard approach used in professional video editing
+```python
+try:
+    from .config import ...
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).parent))
+    from config import ...
+```
 
-### Error Handling
+**Dependency graph**:
+- `config.py` — no internal deps, loaded first by all others
+- `ppt_parser.py` — only depends on python-pptx
+- `script_generator.py` — depends on `config.py`, prompts/
+- `tts_service.py` — depends on `config.py`
+- `ffmpeg_utils.py` — depends on `config.py`
+- `ppt_renderer.py` — depends on `ffmpeg_utils.py`, win32com (Windows)
+- `pptx_to_video.py` — orchestrator, imports everything except `utils.py`
 
-**PowerPoint CreateVideoStatus**:
-- Status 3 (failed) doesn't always mean failure
-- Always check if video file exists and has reasonable size (>100KB)
-- Common false-positive: status shows "failed" but video is actually generated
+### PPT parsing with special shape handling
 
-**COM API Cleanup**:
-- Always close presentation and quit PowerPoint in finally block
-- Clean up temporary PPT and video files after composition
+`ppt_parser.py` extracts text from multiple shape types:
 
-**FFmpeg Errors**:
-- Check FFmpeg/FFprobe paths in config.ini if composition fails
-- Verify audio files exist before calling compose_audio_video()
-- FFmpeg errors are captured in stderr and raised as RuntimeError
+1. **Text frames** (`has_text_frame=True`) — standard text boxes, titles, placeholders
+2. **Tables** (`shape_type=19`) — iterates through all cells to extract text
+3. **Groups** (`shape_type=6`) — recursively extracts text from grouped shapes
 
-### Performance
+The `_extract_shape_text()` method handles all three cases. **Important**: Office lock files (`~$*.pptx`) are automatically filtered out by `find_pptx_files()`.
 
-**Concurrent TTS**:
-- All audio files generated in parallel using asyncio.gather()
-- Significantly faster than sequential generation
+### Two-phase LLM script generation
 
-**Caching**:
-- Scripts cached in output/{name}/scripts.json
-- Audio files cached in temp/{name}/slide_*.mp3
-- User prompted to use cache when available
+`script_generator.py` uses two prompts in sequence:
 
-## Removed Features
+1. **`analyze_ppt.txt`** — LLM analyzes the full PPT text dump and returns structured JSON (topics, flow, key points per slide)
+2. **`generate_script.txt`** — Uses the analysis + per-slide content to generate one narration script per slide
 
-### 2026-05-07: Migrated from Audio Embedding to FFmpeg Composition
+Both phases share the same retry logic (exponential backoff: 2s → 4s → 8s, configurable via `[performance]` in config.ini).
 
-**Old workflow** (removed):
-- Parse → Scripts → TTS → Embed audio into PPT → Export video with audio
+**Empty scripts**: If a slide has no extractable text (pure images, blank slides), the LLM may return an empty script. TTS will skip these slides, causing audio count mismatch. The parser now extracts table and group text to minimize this.
 
-**New workflow** (current):
-- Parse → Scripts → TTS → Export video (no audio) → FFmpeg compose audio
+### Multi-provider LLM support
 
-**Reason for migration**:
-- PowerPoint's audio embedding caused sync issues with animations
-- Audio would play after animations completed, not simultaneously
-- FFmpeg provides frame-level precision and complete control
-- Industry-standard workflow for professional video production
+Four LLM providers are supported with unified interface in `script_generator.py`:
 
-**Removed code**:
-- Audio embedding logic using `AddMediaObject2()` and `AnimationSettings`
-- Animation sequence manipulation (MainSequence.AddEffect, MoveTo, TriggerType)
-- PlayOnEntry and animation synchronization attempts
+- **Claude**: Uses Anthropic SDK with streaming, supports custom `base_url` for proxy/relay services
+- **ZhipuAI**: Uses ZhipuAI SDK
+- **DeepSeek**: Uses OpenAI-compatible SDK with custom base URL
+- **Qianwen**: Uses OpenAI-compatible SDK with Alibaba Cloud endpoint
 
-### 2026-05-07: Removed Frame Extraction Workflow
+All providers use the same retry logic and prompt templates.
 
-**Old workflow** (removed earlier):
-- Parse → Scripts → TTS → Render video → Extract frames → Re-encode with FFmpeg
+**Model customization**: Models can be customized via `config.ini` or `.env` using the `model` or `LLM_MODEL` key. If not specified, defaults are used:
+- Claude: `claude-sonnet-4-6`
+- ZhipuAI: `glm-4`
+- DeepSeek: `deepseek-chat`
+- Qianwen: `qwen-plus`
 
-**Reason for removal**:
-- Frame extraction was complex and error-prone
-- Required FFmpeg re-encoding of entire video
-- PowerPoint native export is simpler and preserves animations
+**Adding new providers**: 
+- OpenAI-compatible providers (Moonshot, Baichuan, MiniMax, etc.) can reuse the DeepSeek/Qianwen code path by adding a new `elif` branch with custom `base_url`
+- Non-compatible providers (Gemini, Cohere) require dedicated SDK integration and separate handling in `_call_llm()`
 
-**Removed code**:
-- LibreOfficeRenderer and PillowRenderer classes
-- RendererFactory class
-- video_creator.py module
-- Frame extraction logic
+### Language auto-detection from TTS voice
+
+The system automatically detects script language from the configured TTS voice to ensure voice-text language matching:
+
+- `config.py` contains `get_language_from_voice()` that extracts language code from voice name (e.g., `zh-CN-XiaoxiaoNeural` → Chinese)
+- `SCRIPT_LANGUAGE` is automatically set based on `TTS_VOICE` configuration
+- Supports 20+ languages including Chinese, English, Japanese, Korean, French, German, Spanish, etc.
+- The language is passed to LLM prompts via `{language}` placeholder in `generate_script.txt`
+- **Important**: Voice and script language must match for TTS to work. English voices cannot synthesize Chinese text and vice versa.
+
+### TTS concurrent processing
+
+`tts_service.py` uses `asyncio.gather()` to synthesize multiple audio files concurrently, providing ~6x speedup. Empty scripts are skipped (no audio generated), which can cause slide-audio count mismatch if not handled properly.
+
+### FFmpeg composition (not embedding)
+
+The system does NOT embed audio into PowerPoint. Instead:
+1. PowerPoint exports video with slide timings matched to audio durations (no audio track)
+2. FFmpeg concatenates all MP3s in order, then merges with `-c:v copy` (no video re-encode)
+3. This gives frame-level precision (33.3ms at 30fps) and avoids PowerPoint's known animation-audio sync bugs
+
+### Configuration priority
+
+`config.ini` > `.env` > defaults. The `get_config()` helper in `config.py` enforces this chain.
+
+**Important**: In `config.ini`, percent signs must be escaped as `%%` (e.g., `rate = +10%%`).
+
+### Caching
+
+- Scripts: `output/{pptx_name}/scripts.json`
+- Audio: `temp/{pptx_name}/slide_*.mp3`
+- Cache is automatically used when `enable_cache = true` and file counts match
+
+## Platform Requirements
+
+**Windows-only for video generation**: The PowerPoint COM API (`ppt_renderer.py`) requires:
+- Native Windows environment (not WSL)
+- Microsoft PowerPoint installed
+- pywin32 package
+
+`platform.system()` must return `'Windows'` for the renderer to be available. Running in WSL will cause `PowerPoint 不可用` error even if using Windows Python.
 
 ## Known Issues
 
-1. **PowerPoint CreateVideoStatus unreliable**: Status 3 may indicate success - always check file existence
-2. **Windows-only**: Requires Windows + PowerPoint (no cross-platform support)
-3. **COM API quirks**: Sometimes need to save, close, and reopen PPT for changes to take effect
-4. **FFmpeg required**: Must have FFmpeg and FFprobe installed and configured
-
-## Testing
-
-Run the full pipeline:
-```bash
-python pptx_to_video.py --input test.pptx
-```
-
-Test individual components:
-- **TTS only**: `python pptx_to_video.py --skip-video`
-- **Script generation only**: `python pptx_to_video.py --skip-tts --skip-video`
-
-**Test files**:
-- `test_powerpoint_audio_embed.py`: Legacy audio embedding tests
-- `test_audio_sync.py`: Audio synchronization experiments
-- `check_animation_settings.py`: PowerPoint animation inspection
+1. **PowerPoint CreateVideoStatus unreliable**: Status 3 ("failed") may still produce valid video — always check file existence and size (>100KB)
+2. **Windows-only**: Requires Windows + PowerPoint + pywin32
+3. **COM API**: Sometimes need to save, close, and reopen PPT for slide timing changes to take effect
+4. **test_renderer.py is stale**: Imports `RendererFactory`, `LibreOfficeRenderer`, `PillowRenderer` which were removed. The file will fail on import — don't use it as a reference
+5. **Empty scripts cause audio mismatch**: If LLM generates empty script for a slide, TTS skips it, causing `len(audio_files) != len(slides)` error. Solution: ensure parser extracts all text (tables, groups) or handle empty scripts specially
+6. **WSL incompatibility**: Must run in native Windows command prompt/PowerShell, not WSL terminal, for PowerPoint COM API to work
+7. **generate_with_animation() broken**: `ScriptGenerator.generate_with_animation()` references `self.animation_script_prompt` which is never loaded in `__init__()`. This method will raise `AttributeError` if called. Only `analyze_ppt.txt` and `generate_script.txt` are loaded.

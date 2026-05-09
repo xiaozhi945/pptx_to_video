@@ -4,9 +4,10 @@
 
 ## 功能特点
 
-- ✅ 自动解析 PPT 内容（文本、标题、备注）
+- ✅ 自动解析 PPT 内容（文本、标题、备注、表格、组合对象）
 - ✅ 使用 Claude/智谱AI/DeepSeek/通义千问 生成专业讲解脚本
-- ✅ 多语言 TTS 语音合成（支持中英日等多种语言）
+- ✅ 多语言 TTS 语音合成（支持中英日等 140+ 种语言）
+- ✅ **智能语言匹配（根据 TTS 语音自动生成对应语言脚本）**
 - ✅ **完美音视频同步（FFmpeg 帧级精度合成）**
 - ✅ **PPT 动画完整保留（Windows + PowerPoint）**
 - ✅ 保留原始 PPT 样式和动画效果
@@ -102,6 +103,7 @@ LLM_PROVIDER=claude  # claude, zhipu, deepseek, qianwen
 
 # API Keys（根据使用的提供商配置对应的 Key）
 ANTHROPIC_API_KEY=sk-ant-your-key-here
+ANTHROPIC_BASE_URL=https://api.anthropic.com  # 可选，用于 Claude API 中转站
 ZHIPUAI_API_KEY=your-key-here
 DEEPSEEK_API_KEY=your-key-here
 QIANWEN_API_KEY=your-key-here
@@ -121,6 +123,21 @@ TTS_PITCH=+0Hz # 音调（-50Hz 到 +50Hz）
 | **deepseek** | DeepSeek Chat | https://platform.deepseek.com/ | 性价比高，推理能力强 |
 | **qianwen** | 通义千问 Plus | https://dashscope.console.aliyun.com/ | 阿里云服务，稳定可靠 |
 
+**自定义模型**：可以通过配置文件指定其他模型，如果不配置则使用上表中的默认模型。
+
+```ini
+# config.ini
+[llm]
+provider = claude
+model = claude-opus-4-7  # 自定义模型
+```
+
+或在 `.env` 中：
+```env
+LLM_PROVIDER=claude
+LLM_MODEL=claude-opus-4-7
+```
+
 ### 高级配置（config.ini 文件）
 
 ```ini
@@ -132,6 +149,7 @@ ffprobe_path = D:\Soft\ffmpeg\bin\ffprobe.exe
 [llm]
 provider = claude
 anthropic_api_key = sk-ant-your-key-here
+# anthropic_base_url = https://your-proxy-url.com  # 可选，用于 Claude API 中转站
 
 [tts]
 voice = zh-CN-XiaoxiaoNeural
@@ -193,17 +211,34 @@ python pptx_to_video.py --skip-video
 
 ## TTS 语音选项
 
+### 智能语言匹配
+
+**重要特性**：系统会根据配置的 TTS 语音自动识别语言，并让 AI 生成对应语言的脚本。
+
+- 配置 `zh-CN-XiaoxiaoNeural`（中文语音）→ AI 自动生成中文脚本
+- 配置 `en-US-AriaNeural`（英文语音）→ AI 自动生成英文脚本
+- 配置 `ja-JP-NanamiNeural`（日文语音）→ AI 自动生成日文脚本
+
+**语音和脚本语言必须匹配**，否则 TTS 会失败并报错 "No audio was received"。系统的自动匹配机制确保不会出现语言不匹配的问题。
+
 ### 常用语音
 
 | 语言 | 语音代码 | 性别 | 特点 |
 |------|---------|------|------|
 | 中文 | `zh-CN-XiaoxiaoNeural` | 女 | 温柔、自然（默认） |
 | 中文 | `zh-CN-YunxiNeural` | 男 | 沉稳、专业 |
+| 中文 | `zh-CN-XiaoyiNeural` | 女 | 活泼、年轻 |
+| 中文 | `zh-CN-YunjianNeural` | 男 | 成熟、磁性 |
 | 英文 | `en-US-AriaNeural` | 女 | 美式英语 |
 | 英文 | `en-US-GuyNeural` | 男 | 美式英语 |
 | 日文 | `ja-JP-NanamiNeural` | 女 | 标准日语 |
+| 日文 | `ja-JP-KeitaNeural` | 男 | 标准日语 |
+| 韩语 | `ko-KR-SunHiNeural` | 女 | 标准韩语 |
+| 法语 | `fr-FR-DeniseNeural` | 女 | 法国法语 |
+| 德语 | `de-DE-KatjaNeural` | 女 | 标准德语 |
+| 西班牙语 | `es-ES-ElviraNeural` | 女 | 西班牙语 |
 
-完整列表：https://speech.microsoft.com/portal/voicegallery
+完整列表（支持 140+ 种语言）：https://speech.microsoft.com/portal/voicegallery
 
 ## 音视频同步原理
 
@@ -283,7 +318,10 @@ API 调用失败时使用指数退避策略：
 **现象**：程序提示需要 PowerPoint
 
 **解决**：
-1. 确认在 Windows 系统上
+1. **确认在原生 Windows 系统上运行**
+   - ⚠️ **不支持 WSL (Windows Subsystem for Linux)**
+   - 必须在 Windows 命令提示符 (CMD) 或 PowerShell 中运行
+   - WSL 环境中 `platform.system()` 返回 'Linux'，导致 PowerPoint COM API 不可用
 2. 安装 Microsoft PowerPoint
 3. 安装 pywin32：`pip install pywin32`
 
@@ -332,11 +370,64 @@ python -c "import config; config.print_config()"
 
 注意：`config.ini` 中的百分号要写成 `%%`
 
+### 7. TTS 语音合成失败
+
+**错误**：`No audio was received. The voice does not match the language of the input text.`
+
+**原因**：TTS 语音配置与脚本语言不匹配（例如使用英文语音合成中文文本）
+
+**解决**：
+- 系统会自动根据 TTS 语音配置生成对应语言的脚本
+- 如果仍然失败，检查 `config.ini` 中的 `voice` 配置是否正确
+- 常见配置：
+  - 中文：`zh-CN-XiaoxiaoNeural`
+  - 英文：`en-US-AriaNeural`
+  - 日文：`ja-JP-NanamiNeural`
+
+## 已知问题
+
+### 1. 不支持 WSL 环境
+
+**限制**：程序必须在 Windows 原生环境中运行，不支持 WSL (Windows Subsystem for Linux)
+
+**原因**：
+- PowerPoint COM API 只能在 Windows 原生环境中使用
+- WSL 环境中 `platform.system()` 返回 'Linux'，无法调用 PowerPoint
+
+**解决**：在 Windows 命令提示符 (CMD) 或 PowerShell 中运行程序
+
+### 2. 动画脚本生成功能暂不可用
+
+**问题**：`generate_with_animation()` 方法引用了不存在的 `self.animation_script_prompt` 属性
+
+**影响**：如果尝试使用动画感知的脚本生成功能会报错
+
+**状态**：已知 bug，待修复
+
+**临时方案**：使用默认的 `generate_script()` 方法（当前默认行为）
+
+### 3. PowerPoint 导出状态码不可靠
+
+**问题**：PowerPoint API 可能返回失败状态，但视频文件实际已成功生成
+
+**解决**：程序会自动检查文件大小，如果 >100KB 则认为导出成功并继续处理
+
+### 4. 表格和组合对象解析
+
+**支持情况**：
+- ✅ 已支持表格 (TABLE) 文本提取
+- ✅ 已支持组合对象 (GROUP) 文本提取
+- ⚠️ 复杂嵌套结构可能解析不完整
+
+**建议**：如果发现某些文本未被提取，可以在 PPT 备注中手动添加关键信息
+
 ## 项目结构
 
 ```
 pptx_to_video/
-├── pptx_to_video.py      # 主程序
+├── pptx_to_video.py      # 主程序入口
+├── __main__.py           # python -m 入口
+├── __init__.py           # 包初始化
 ├── ppt_parser.py         # PPT 解析
 ├── ppt_renderer.py       # PowerPoint 视频渲染
 ├── script_generator.py   # AI 脚本生成
@@ -344,14 +435,17 @@ pptx_to_video/
 ├── ffmpeg_utils.py       # FFmpeg 音频合成
 ├── config.py             # 配置管理
 ├── check_dependencies.py # 依赖检查
+├── utils.py              # 工具函数
 ├── prompts/              # AI 提示词
 ├── requirements.txt      # Python 依赖
 ├── config.ini            # 配置文件
+├── .env.example          # 环境变量示例
 ├── input/                # 输入 PPT 目录
 ├── output/               # 输出视频目录
 ├── temp/                 # 临时文件目录
 ├── README.md             # 项目说明
-└── CLAUDE.md             # 开发文档
+├── CLAUDE.md             # 开发文档
+└── MODELS.md             # 模型说明
 ```
 
 ## 输出文件
