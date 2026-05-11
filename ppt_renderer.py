@@ -167,7 +167,9 @@ class PowerPointRenderer:
                 elif status == 3:  # 失败
                     # 检查文件是否实际存在
                     if check_video_path.exists() and check_video_path.stat().st_size > 1024 * 100:
-                        print(f"  ⚠️  状态显示失败，但视频文件已生成 ({check_video_path.stat().st_size / 1024 / 1024:.2f} MB)", flush=True)
+                        print(f"  ✓ 视频文件已生成 ({check_video_path.stat().st_size / 1024 / 1024:.2f} MB)", flush=True)
+                        print(f"  （PowerPoint API 状态不可靠，但文件生成成功）", flush=True)
+                        status = 2  # 将状态标记为成功
                         break
                     else:
                         raise RuntimeError("PowerPoint 视频生成失败")

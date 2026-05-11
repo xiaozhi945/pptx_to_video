@@ -138,6 +138,16 @@ ENABLE_CACHE = get_config_bool("performance", "enable_cache", "ENABLE_CACHE", Tr
 MAX_RETRIES = get_config_int("performance", "max_retries", "MAX_RETRIES", 3)
 BASE_RETRY_DELAY = get_config_int("performance", "base_retry_delay", "BASE_RETRY_DELAY", 2)
 
+# 字幕配置
+SUBTITLE_ENABLE = get_config_bool("subtitle", "enable", "SUBTITLE_ENABLE", True)
+SUBTITLE_MODE = get_config("subtitle", "mode", "SUBTITLE_MODE", "srt").lower()  # srt, soft, hard, none
+SUBTITLE_TYPE = get_config("subtitle", "type", "SUBTITLE_TYPE", "word").lower()  # word, sentence
+SUBTITLE_MAX_CHARS = get_config_int("subtitle", "max_chars_per_line", "SUBTITLE_MAX_CHARS", 42)
+SUBTITLE_FONT_SIZE = get_config_int("subtitle", "font_size", "SUBTITLE_FONT_SIZE", 24)
+SUBTITLE_FONT_NAME = get_config("subtitle", "font_name", "SUBTITLE_FONT_NAME", "Arial")
+SUBTITLE_OUTLINE_WIDTH = get_config_int("subtitle", "outline_width", "SUBTITLE_OUTLINE_WIDTH", 2)
+SUBTITLE_LANGUAGE = get_config("subtitle", "language", "SUBTITLE_LANGUAGE", "chi")
+
 # LLM 配置（根据提供商自动选择）
 if LLM_PROVIDER == "claude":
     MODEL_NAME = get_config("llm", "model", "LLM_MODEL", "claude-sonnet-4-6")  # Claude Sonnet 4.6
@@ -170,4 +180,7 @@ def print_config():
     print(f"启用缓存: {ENABLE_CACHE}")
     print(f"最大重试次数: {MAX_RETRIES}")
     print(f"基础重试延迟: {BASE_RETRY_DELAY}s")
+    print(f"字幕生成: {SUBTITLE_ENABLE}")
+    print(f"字幕模式: {SUBTITLE_MODE}")
+    print(f"字幕类型: {SUBTITLE_TYPE}")
     print("=" * 60)
