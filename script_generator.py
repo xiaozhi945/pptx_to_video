@@ -46,6 +46,8 @@ class ScriptGenerator:
         if max_tokens is None:
             max_tokens = MAX_TOKENS
 
+        print(f"  → 模型: {MODEL_NAME}", flush=True)
+
         if self.provider == "claude":
             # 使用流式传输以支持长响应
             full_response = ""
@@ -63,7 +65,8 @@ class ScriptGenerator:
                     full_response += text
             return full_response
 
-        elif self.provider == "zhipu":
+        elif self.provider in ("zhipu", "deepseek", "qianwen"):
+            # 智谱、DeepSeek 和通义千问使用 OpenAI 兼容接口
             response = self.client.chat.completions.create(
                 model=MODEL_NAME,
                 messages=[
@@ -74,20 +77,12 @@ class ScriptGenerator:
                 ],
                 max_tokens=max_tokens,
             )
-            return response.choices[0].message.content
-
-        elif self.provider in ("deepseek", "qianwen"):
-            # DeepSeek 和通义千问使用 OpenAI 兼容接口
-            response = self.client.chat.completions.create(
-                model=MODEL_NAME,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                max_tokens=max_tokens,
-            )
+            if not response.choices:
+                error_msg = f"API 返回空 choices（模型={MODEL_NAME}）"
+                # 尝试提取更详细的错误信息
+                if hasattr(response, 'error') and response.error:
+                    error_msg += f": {response.error}"
+                raise RuntimeError(error_msg)
             return response.choices[0].message.content
 
     def analyze_ppt(self, ppt_content: str) -> Dict[str, Any]:
@@ -116,6 +111,14 @@ class ScriptGenerator:
 
                     return json.loads(json_str.strip())
                 except json.JSONDecodeError:
+                    # 用正则从文本中提取第一个完整的 {...} 块
+                    import re
+                    match = re.search(r'\{.*\}', response_text, re.DOTALL)
+                    if match:
+                        try:
+                            return json.loads(match.group())
+                        except json.JSONDecodeError:
+                            pass
                     print("警告: 无法解析 JSON，返回原始文本", flush=True)
                     return {"analysis": response_text, "raw": True}
 
