@@ -16,8 +16,11 @@ PPTX 智能讲解视频生成器 - Converts PowerPoint presentations into narrat
 # Basic usage (processes all PPTX in input/)
 python pptx_to_video.py
 
-# Process a specific file
-python pptx_to_video.py --input path/to/file.pptx
+# Process a specific file with optional output path
+python pptx_to_video.py --input path/to/file.pptx --output path/to/output.mp4
+
+# Pass API key inline
+python pptx_to_video.py --api-key sk-ant-xxx
 
 # Skip steps during development
 python pptx_to_video.py --skip-tts --skip-video    # scripts only
@@ -33,7 +36,7 @@ python -c "import config; config.print_config()"
 python pptx_to_video.py --list
 
 # Clear cache to force regeneration
-rm -rf output/*/scripts.json temp/*/slide_*.mp3
+rm -rf output/*/scripts.json temp/*/slide_*.mp3 temp/*/slide_*.timing.json
 ```
 
 ## Architecture
@@ -85,10 +88,10 @@ Both phases share the same retry logic (exponential backoff: 2s → 4s → 8s, c
 
 Four LLM providers are supported with unified interface in `script_generator.py`:
 
-- **Claude**: Uses Anthropic SDK with streaming, supports custom `base_url` for proxy/relay services
+- **Claude**: Uses Anthropic SDK with streaming; see Known Issues for base_url caveat
 - **ZhipuAI**: Uses ZhipuAI SDK
-- **DeepSeek**: Uses OpenAI-compatible SDK with custom base URL
-- **Qianwen**: Uses OpenAI-compatible SDK with Alibaba Cloud endpoint
+- **DeepSeek**: Uses OpenAI-compatible SDK with custom base URL (`DEEPSEEK_BASE_URL`)
+- **Qianwen**: Uses OpenAI-compatible SDK with Alibaba Cloud endpoint (`QIANWEN_BASE_URL`)
 
 All providers use the same retry logic and prompt templates.
 
@@ -131,6 +134,8 @@ The system does NOT embed audio into PowerPoint. Instead:
 2. FFmpeg concatenates all MP3s in order, then merges with `-c:v copy` (no video re-encode)
 3. This gives frame-level precision (33.3ms at 30fps) and avoids PowerPoint's known animation-audio sync bugs
 
+If FFmpeg is unavailable, `ppt_renderer.py` falls back to PowerPoint's built-in audio embedding.
+
 ### Configuration priority
 
 `config.ini` > `.env` > defaults. The `get_config()` helper in `config.py` enforces this chain.
@@ -142,7 +147,7 @@ The system does NOT embed audio into PowerPoint. Instead:
 - Scripts: `output/{pptx_name}/scripts.json`
 - Audio: `temp/{pptx_name}/slide_*.mp3`
 - Word timestamps: `temp/{pptx_name}/slide_*.timing.json`
-- Cache is automatically used when `enable_cache = true` and file counts match
+- When `enable_cache = true` and file counts match, cache is used automatically (no user prompt — the interactive question shown in output is always auto-answered "y").
 
 ### Subtitle generation (three modes)
 
@@ -169,6 +174,16 @@ The system does NOT embed audio into PowerPoint. Instead:
 - `type = sentence`: Full sentence display using audio duration
 
 **Auto-fallback**: If `.timing.json` is missing or empty, word-level generation automatically falls back to sentence-level.
+
+**Full subtitle config options** (all in `[subtitle]` section of `config.ini`):
+- `enable` — true/false
+- `mode` — srt / soft / hard / none
+- `type` — word / sentence
+- `max_chars_per_line` — default 42
+- `font_size` — default 24 (hard subtitle)
+- `font_name` — default Arial (hard subtitle)
+- `outline_width` — default 2 (hard subtitle, range 1-4)
+- `language` — default chi (soft subtitle metadata, e.g. chi/eng/jpn)
 
 **Important**: `config.ini` values cannot have inline comments. Use separate comment lines:
 ```ini
@@ -199,3 +214,4 @@ outline_width = 2  # comment here
 7. **generate_with_animation() broken**: `ScriptGenerator.generate_with_animation()` references `self.animation_script_prompt` which is never loaded in `__init__()`. This method will raise `AttributeError` if called. Only `analyze_ppt.txt` and `generate_script.txt` are loaded
 8. **Slide indexing**: `scripts.json` uses `slide_index` (0-based) but audio files use `slide_NNN.mp3` (1-based). Subtitle generator handles this conversion: `slide_num = slide_index + 1`
 9. **edge-tts WordBoundary**: Must explicitly set `boundary='WordBoundary'` parameter, otherwise only `SentenceBoundary` events are emitted and `.timing.json` files will be empty arrays.
+10. **ANTHROPIC_BASE_URL config.ini gap**: `script_generator.py` creates `Anthropic(api_key=api_key)` without explicitly passing `base_url`. The Anthropic SDK reads `ANTHROPIC_BASE_URL` from the environment automatically, so `.env` works, but a value set only in `config.ini` (not exported to env) is silently ignored. Workaround: set `ANTHROPIC_BASE_URL` in `.env` rather than `config.ini`.
