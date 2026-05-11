@@ -8,6 +8,8 @@
 - ✅ 使用 Claude/智谱AI/DeepSeek/通义千问 生成专业讲解脚本
 - ✅ 多语言 TTS 语音合成（支持中英日等 140+ 种语言）
 - ✅ **智能语言匹配（根据 TTS 语音自动生成对应语言脚本）**
+- ✅ **逐词字幕生成（类似 YouTube 专业字幕效果）**
+- ✅ **三种字幕模式（独立 SRT / 软字幕 / 硬字幕）**
 - ✅ **完美音视频同步（FFmpeg 帧级精度合成）**
 - ✅ **PPT 动画完整保留（Windows + PowerPoint）**
 - ✅ 保留原始 PPT 样式和动画效果
@@ -19,13 +21,14 @@
 ## 工作原理
 
 ```
-PPT 文件 → AI 生成讲解脚本 → TTS 语音合成 → PowerPoint 导出视频 → FFmpeg 精确合成音频 → 完成
+PPT 文件 → AI 生成讲解脚本 → TTS 语音合成（含时间戳） → 生成字幕 → PowerPoint 导出视频 → FFmpeg 精确合成音频 → 完成
 ```
 
 **核心技术**：
 - PowerPoint 导出保留所有动画效果
 - FFmpeg 以帧级精度（30fps = 33.3ms）合成音频
 - 音频在幻灯片出现时立即播放，与动画完美同步
+- 基于 edge-tts WordBoundary 实现逐词字幕
 
 ## 快速开始
 
@@ -194,9 +197,22 @@ enable_concurrent_tts = true  # TTS 并发处理（速度提升 6 倍）
 enable_cache = true           # 启用缓存（节省 API 费用）
 max_retries = 3               # API 最大重试次数
 base_retry_delay = 2          # 基础重试延迟（秒）
+
+[subtitle]
+# 字幕配置
+enable = true                 # 是否生成字幕
+mode = srt                    # srt（独立文件）/ soft（软字幕）/ hard（硬字幕）
+type = word                   # word（逐词显示）/ sentence（整句显示）
+max_chars_per_line = 42       # 逐词字幕每行最大字符数
+font_size = 24                # 硬字幕字体大小
+# 描边宽度（1-4，推荐 2-3）
+outline_width = 2             # 硬字幕描边宽度
+language = eng                # 软字幕语言代码（chi/eng/jpn等）
 ```
 
 **配置优先级**：`config.ini > .env > 默认值`
+
+**重要提示**：`config.ini` 中不能使用行内注释，注释必须单独一行。
 
 ### 查看当前配置
 
@@ -292,6 +308,125 @@ voice = zh-CN-XiaoxiaoNeural  # 配置中文语音
 | 西班牙语 | `es-ES-ElviraNeural` | 女 | 西班牙语 |
 
 完整列表（支持 140+ 种语言）：https://speech.microsoft.com/portal/voicegallery
+
+## 字幕功能
+
+### 三种字幕模式
+
+系统支持三种字幕模式，可在 `config.ini` 中配置：
+
+#### 1. 独立 SRT 文件（推荐）
+
+```ini
+[subtitle]
+mode = srt
+```
+
+**特点**：
+- ✅ 生成独立的 `.srt` 字幕文件
+- ✅ 最快速（无需重新编码视频）
+- ✅ 可以手动编辑字幕
+- ✅ 播放器加载字幕文件即可
+
+**使用方式**：
+- 将 `.srt` 文件和视频放在同一目录，命名相同
+- 或在播放器中手动加载字幕文件
+
+#### 2. 软字幕（可开关）
+
+```ini
+[subtitle]
+mode = soft
+language = eng  # 字幕语言代码
+```
+
+**特点**：
+- ✅ 字幕嵌入视频文件
+- ✅ 播放器可以开关字幕
+- ✅ 不需要重新编码视频（快速）
+- ⚠️ 部分老旧播放器可能不支持
+
+#### 3. 硬字幕（烧录）
+
+```ini
+[subtitle]
+mode = hard
+font_size = 24
+outline_width = 2  # 描边宽度（1-4）
+```
+
+**特点**：
+- ✅ 字幕烧录到视频画面
+- ✅ 所有播放器都能看到
+- ✅ 白色字体 + 黑色描边，任何背景都清晰
+- ⚠️ 无法关闭字幕
+- ⚠️ 需要重新编码视频（耗时）
+
+### 逐词字幕 vs 整句字幕
+
+#### 逐词字幕（推荐）
+
+```ini
+[subtitle]
+type = word
+max_chars_per_line = 42  # 每行最大字符数
+```
+
+**效果**：字幕按单词实际发音时间逐行显示，类似 YouTube 专业字幕
+
+**示例**：
+```
+[00:00 - 00:02] Welcome everyone to the Product
+[00:02 - 00:04] and Marketing Center training
+[00:04 - 00:06] for System Integrator Business Analysts
+```
+
+**优势**：
+- ✅ 精确同步语音
+- ✅ 观看体验更好
+- ✅ 易于跟读
+
+#### 整句字幕
+
+```ini
+[subtitle]
+type = sentence
+```
+
+**效果**：整句从头到尾显示
+
+**示例**：
+```
+[00:00 - 00:06] Welcome everyone to the Product and Marketing Center training for System Integrator Business Analysts.
+```
+
+### 字幕样式配置
+
+```ini
+[subtitle]
+# 字体大小（硬字幕）
+font_size = 24
+
+# 描边宽度（硬字幕，1-4）
+outline_width = 2
+
+# 每行最大字符数（逐词字幕）
+max_chars_per_line = 42
+```
+
+**描边宽度建议**：
+- `1`：细描边，适合小字体（<20px）
+- `2`：标准描边（推荐）
+- `3`：粗描边，背景复杂时使用
+- `4`：很粗描边，大字体时使用（>30px）
+
+### 字幕生成流程
+
+```
+TTS 生成音频 → 获取单词时间戳 → 按字符数分组 → 生成 SRT 字幕 → 嵌入/烧录（可选）
+```
+
+**自动降级**：如果时间戳获取失败，自动降级为整句字幕。
 
 ## 音视频同步原理
 
@@ -403,6 +538,61 @@ A: 删除缓存文件：
 ```bash
 rm -rf output/*/scripts.json
 rm -rf temp/*/slide_*.mp3
+rm -rf temp/*/slide_*.timing.json
+```
+
+或在 `config.ini` 中禁用缓存：
+```ini
+[performance]
+enable_cache = false
+```
+
+### 6. 配置未生效
+
+**Q: 修改了配置但没有生效？**
+
+A: 检查配置优先级和语法：
+```bash
+# 查看当前配置
+python -c "import config; config.print_config()"
+```
+
+**重要**：`config.ini` 中不能使用行内注释：
+```ini
+# 正确
+outline_width = 2
+
+# 错误 - 会导致解析失败
+outline_width = 2  # 注释
+```
+
+### 7. TTS 语音合成失败
+
+**错误**：`No audio was received. The voice does not match the language of the input text.`
+
+**原因**：TTS 语音配置与脚本语言不匹配（例如使用英文语音合成中文文本）
+
+**解决**：
+- 系统会自动根据 TTS 语音配置生成对应语言的脚本
+- 如果仍然失败，检查 `config.ini` 中的 `voice` 配置是否正确
+- 常见配置：
+  - 中文：`zh-CN-XiaoxiaoNeural`
+  - 英文：`en-US-AriaNeural`
+  - 日文：`ja-JP-NanamiNeural`
+
+### 8. 字幕时间戳为空
+
+**现象**：生成的 `.timing.json` 文件是空数组 `[]`
+
+**原因**：使用了缓存的音频文件，或 TTS 服务未正确配置
+
+**解决**：
+1. 删除缓存的音频和时间戳文件：
+   ```bash
+   rm -rf temp/*/slide_*.mp3 temp/*/slide_*.timing.json
+   ```
+2. 重新运行程序生成新的音频和时间戳
+rm -rf temp/*/slide_*.mp3
 ```
 
 或在 `config.ini` 中禁用缓存：
@@ -506,13 +696,17 @@ pptx_to_video/
 ```
 output/
 └── 你的PPT名称/
-    ├── 你的PPT名称.mp4      # 最终视频
-    └── scripts.json         # 生成的讲解脚本
+    ├── 你的PPT名称.mp4              # 最终视频
+    ├── 你的PPT名称.srt              # SRT 字幕文件（mode=srt）
+    ├── 你的PPT名称_with_subtitle.mp4  # 软字幕视频（mode=soft）
+    ├── 你的PPT名称_burned.mp4         # 硬字幕视频（mode=hard）
+    └── scripts.json                 # 生成的讲解脚本
 
 temp/
 └── 你的PPT名称/
-    ├── content.txt          # PPT 文本内容
-    └── slide_001.mp3        # 各页音频
+    ├── content.txt                  # PPT 文本内容
+    ├── slide_001.mp3                # 各页音频
+    └── slide_001.timing.json        # 单词时间戳（逐词字幕用）
 ```
 
 ## 技术栈

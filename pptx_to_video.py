@@ -30,10 +30,11 @@ if not check_and_install_dependencies():
 # 检查可选依赖
 check_optional_dependencies()
 
-from config import INPUT_DIR, OUTPUT_DIR, TEMP_DIR, PROJECT_ROOT, ZHIPUAI_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, QIANWEN_API_KEY, LLM_PROVIDER, TTS_VOICE, ENABLE_CACHE
+from config import INPUT_DIR, OUTPUT_DIR, TEMP_DIR, PROJECT_ROOT, ZHIPUAI_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, QIANWEN_API_KEY, LLM_PROVIDER, TTS_VOICE, ENABLE_CACHE, SUBTITLE_ENABLE, SUBTITLE_MODE, SUBTITLE_TYPE
 from ppt_parser import PPTParser
 from script_generator import ScriptGenerator
 from tts_service import TTSService
+from subtitle_generator import SubtitleGenerator
 
 
 def main():
@@ -198,9 +199,39 @@ def main():
         else:
             print("[3/5] 跳过语音合成", flush=True)
 
-        # 4. 渲染视频（使用音频嵌入方案）
+        # 4. 生成字幕
+        srt_path = None
+        if SUBTITLE_ENABLE and SUBTITLE_MODE != "none" and not args.skip_tts:
+            print("[4/6] 生成字幕...", flush=True)
+            subtitle_gen = SubtitleGenerator()
+            srt_path = file_output_dir / f"{pptx_file.stem}.srt"
+
+            # 根据配置选择字幕类型
+            if SUBTITLE_TYPE == "word":
+                print(f"  使用逐词字幕模式", flush=True)
+                if subtitle_gen.generate_word_level_srt(scripts, file_temp_dir, srt_path):
+                    print(f"  ✓ 逐词字幕文件: {srt_path}", flush=True)
+                else:
+                    print(f"  ⚠️  逐词字幕生成失败，降级为整句字幕", flush=True)
+                    # 降级为整句字幕
+                    if subtitle_gen.generate_srt(scripts, file_temp_dir, srt_path):
+                        print(f"  ✓ 整句字幕文件: {srt_path}", flush=True)
+                    else:
+                        print(f"  ⚠️  字幕生成失败", flush=True)
+                        srt_path = None
+            else:
+                print(f"  使用整句字幕模式", flush=True)
+                if subtitle_gen.generate_srt(scripts, file_temp_dir, srt_path):
+                    print(f"  ✓ 字幕文件: {srt_path}", flush=True)
+                else:
+                    print(f"  ⚠️  字幕生成失败", flush=True)
+                    srt_path = None
+        else:
+            print("[4/6] 跳过字幕生成", flush=True)
+
+        # 5. 渲染视频（使用音频嵌入方案）
         if not args.skip_video:
-            print("[4/5] 渲染视频（嵌入音频）...", flush=True)
+            print("[5/6] 渲染视频（嵌入音频）...", flush=True)
 
             # 获取音频文件
             audio_files = sorted(file_temp_dir.glob("slide_*.mp3"))
@@ -227,13 +258,30 @@ def main():
                     try:
                         renderer.render(pptx_file, audio_files, Path(output_video))
                         print(f"\n✅ 视频生成完成: {output_video}", flush=True)
+
+                        # 处理字幕（软字幕或硬字幕）
+                        if srt_path and srt_path.exists() and SUBTITLE_MODE in ["soft", "hard"]:
+                            subtitle_gen = SubtitleGenerator()
+
+                            if SUBTITLE_MODE == "soft":
+                                # 软字幕：嵌入到视频中
+                                video_with_subtitle = file_output_dir / f"{pptx_file.stem}_with_subtitle.mp4"
+                                if subtitle_gen.embed_soft_subtitles(Path(output_video), srt_path, video_with_subtitle):
+                                    print(f"  ✓ 软字幕视频: {video_with_subtitle}", flush=True)
+
+                            elif SUBTITLE_MODE == "hard":
+                                # 硬字幕：烧录到视频中
+                                video_with_subtitle = file_output_dir / f"{pptx_file.stem}_burned.mp4"
+                                if subtitle_gen.burn_subtitles(Path(output_video), srt_path, video_with_subtitle):
+                                    print(f"  ✓ 硬字幕视频: {video_with_subtitle}", flush=True)
+
                     except Exception as e:
                         print(f"\n❌ 视频生成失败: {e}", flush=True)
         else:
-            print("[4/5] 跳过视频生成", flush=True)
+            print("[5/6] 跳过视频生成", flush=True)
 
-        # 5. 完成
-        print("[5/5] 完成", flush=True)
+        # 6. 完成
+        print("[6/6] 完成", flush=True)
 
         print(f"\n📁 输出目录: {file_output_dir}", flush=True)
 
